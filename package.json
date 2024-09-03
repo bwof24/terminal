@@ -8,17 +8,17 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "express": "",
-    "express-session": "",
-    "multer": "",
-    "node-pty": "",
-    "ws": "",
-    "express-rate-limit": "",
-    "body-parser": "",
-    "fs-extra": ""
+    "express": "*",
+    "express-session": "*",
+    "multer": "*",
+    "node-pty": "*",
+    "ws": "*",
+    "express-rate-limit": "*",
+    "body-parser": "*",
+    "fs-extra": "*"
   },
   "devDependencies": {
-    "nodemon": ""
+    "nodemon": "*"
   },
   "engines": {
     "node": ">=14.0.0"
