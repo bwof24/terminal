@@ -1,37 +1,28 @@
 const express = require('express');
-const WebSocket = require('ws');
-const pty = require('node-pty');
 const http = require('http');
 const path = require('path');
-const bodyParser = require('body-parser');
-const multer = require('multer');
+const WebSocket = require('ws');
+const pty = require('node-pty');
 const session = require('express-session');
-const rateLimit = require('express-rate-limit');
+const multer = require('multer');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(bodyParser.json());
+// Middleware
 app.use(express.static(path.join(__dirname, 'public')));
-
 app.use(session({
     secret: 'your-secret-key',
     resave: false,
     saveUninitialized: true,
-    cookie: { secure: false } // Set to true if using HTTPS
+    cookie: { secure: false }
 }));
 
+// File upload setup
 const upload = multer({ dest: 'uploads/' });
 
-// Rate limiting middleware
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100 // Limit each IP to 100 requests per windowMs
-});
-app.use(limiter);
-
-// File operations
 app.post('/upload', upload.single('file'), (req, res) => {
     res.send('File uploaded successfully.');
 });
@@ -61,56 +52,28 @@ app.post('/save-file', (req, res) => {
     });
 });
 
-app.post('/save-preferences', (req, res) => {
-    const { userId, preferences } = req.body;
-    // Implement saving preferences logic here
-    res.send('Preferences saved successfully.');
-});
-
-function ensureAuthenticated(req, res, next) {
-    if (req.session.authenticated) {
-        return next();
-    }
-    res.redirect('/login');
-}
-
-// Use middleware for protected routes
-app.use('/secure', ensureAuthenticated);
-
+// WebSocket connection for terminal
 wss.on('connection', (ws) => {
-    const sessionId = generateUniqueId();
     const shell = pty.spawn('bash', [], {
         name: 'xterm-color',
         cols: 80,
         rows: 24,
         cwd: process.env.HOME,
-        env: process.env,
+        env: process.env
     });
-
-    sessions[sessionId] = shell;
 
     shell.on('data', (data) => {
-        ws.send(JSON.stringify({ sessionId, data }));
+        ws.send(data);
     });
 
-    ws.on('message', (msg) => {
-        const { sessionId, data } = JSON.parse(msg);
-        if (sessions[sessionId]) {
-            sessions[sessionId].write(data);
-        }
+    ws.on('message', (message) => {
+        shell.write(message);
     });
 
     ws.on('close', () => {
-        if (sessions[sessionId]) {
-            sessions[sessionId].kill();
-            delete sessions[sessionId];
-        }
+        shell.kill();
     });
 });
-
-function generateUniqueId() {
-    return '_' + Math.random().toString(36).substr(2, 9);
-}
 
 server.listen(8080, () => {
     console.log('Server running on http://localhost:8080');
