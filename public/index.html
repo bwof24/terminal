@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Web Terminal</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -21,10 +22,6 @@
             border: 1px solid #333;
             background: #000;
             color: #0f0;
-            padding: 10px;
-            overflow-y: scroll;
-            overflow-x: hidden;
-            font-family: monospace;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
         }
         input, button {
@@ -43,95 +40,29 @@
         button:hover {
             background: #444;
         }
-        #commandInput {
-            margin-bottom: 20px;
-        }
-        .error {
-            color: #f00;
-        }
-        .stderr {
-            color: #f80;
-        }
-        .stdout {
-            color: #0f0;
-        }
     </style>
 </head>
 <body>
     <div id="terminal"></div>
-    <input id="commandInput" type="text" placeholder="Enter command"/>
-    <button id="clearButton">Clear</button>
-    <button id="saveButton">Save</button>
-    
-    <!-- File upload and download -->
     <input type="file" id="fileInput"/>
     <button id="uploadButton">Upload</button>
     <input type="text" id="downloadFilename" placeholder="Filename to download"/>
     <button id="downloadButton">Download</button>
-    
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script>
-        const terminal = document.getElementById('terminal');
-        const commandInput = document.getElementById('commandInput');
+        const { Terminal } = window.xterm;
+        const terminal = new Terminal();
+        terminal.open(document.getElementById('terminal'));
+
         const ws = new WebSocket('ws://localhost:8080');
-        
-        let commandHistory = [];
-        let historyIndex = -1;
 
         ws.onmessage = (event) => {
-            const message = event.data;
-            const newLine = document.createElement('div');
-            if (message.startsWith('Error:')) {
-                newLine.textContent = message;
-                newLine.className = 'error';
-            } else if (message.startsWith('stderr:')) {
-                newLine.textContent = message;
-                newLine.className = 'stderr';
-            } else if (message.startsWith('stdout:')) {
-                newLine.textContent = message;
-                newLine.className = 'stdout';
-            } else {
-                newLine.textContent = message;
-            }
-            terminal.appendChild(newLine);
-            terminal.scrollTop = terminal.scrollHeight;
+            terminal.write(event.data);
         };
 
-        commandInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                const command = commandInput.value;
-                commandInput.value = '';
-                ws.send(command);
-                commandHistory.push(command);
-                historyIndex = commandHistory.length;
-            } else if (event.key === 'ArrowUp') {
-                if (historyIndex > 0) {
-                    historyIndex--;
-                    commandInput.value = commandHistory[historyIndex];
-                }
-            } else if (event.key === 'ArrowDown') {
-                if (historyIndex < commandHistory.length - 1) {
-                    historyIndex++;
-                    commandInput.value = commandHistory[historyIndex];
-                } else {
-                    historyIndex = commandHistory.length;
-                    commandInput.value = '';
-                }
-            }
-        });
-
-        document.getElementById('clearButton').addEventListener('click', () => {
-            terminal.innerHTML = '';
-        });
-
-        document.getElementById('saveButton').addEventListener('click', () => {
-            const text = terminal.textContent;
-            const blob = new Blob([text], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'terminal_output.txt';
-            a.click();
-            URL.revokeObjectURL(url);
+        terminal.onData(data => {
+            ws.send(data);
         });
 
         document.getElementById('uploadButton').addEventListener('click', () => {
