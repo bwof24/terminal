@@ -12,7 +12,24 @@
             display: flex;
             flex-direction: column;
             background-color: black;
+            color: white;
             overflow: hidden;
+        }
+        #toolbar {
+            display: flex;
+            justify-content: space-around;
+            padding: 10px;
+            background-color: #333;
+        }
+        #toolbar button, #toolbar input {
+            background-color: #555;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        #toolbar button:hover, #toolbar input:hover {
+            background-color: #666;
         }
         #terminal-container {
             flex: 1;
@@ -21,28 +38,27 @@
             overflow: auto;
         }
         .xterm {
-            background-color: black;
-            color: white;
             width: 100%;
             height: 100%;
-        }
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 10px;
-        }
-        ::-webkit-scrollbar-thumb {
-            background-color: #555;
         }
     </style>
 </head>
 <body>
+    <div id="toolbar">
+        <button id="new-session">New Session</button>
+        <button id="clear-terminal">Clear</button>
+        <input type="file" id="upload" style="display:none;">
+        <button id="upload-button">Upload</button>
+        <button id="download-button">Download</button>
+    </div>
     <div id="terminal-container"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
         const terminalContainer = document.getElementById('terminal-container');
-        const term = new Terminal({
+        let term = new Terminal({
             cursorBlink: true,
             fontFamily: 'monospace',
             theme: {
@@ -60,7 +76,7 @@
         term.open(terminalContainer);
         fitAddon.fit();
 
-        const socket = new WebSocket(`ws://${window.location.host}`);
+        let socket = new WebSocket(`ws://${window.location.host}`);
 
         socket.onopen = () => {
             console.log('WebSocket connection established');
@@ -71,6 +87,9 @@
         };
 
         term.onData((data) => {
+            if (data === '\r' || data === '\n') {
+                return;
+            }
             socket.send(data);
         });
 
@@ -78,66 +97,78 @@
             fitAddon.fit();
         });
 
-        // Handle long press for text selection on mobile devices
-        let isSelecting = false;
-        let selectionStart = null;
+        // New session button
+        document.getElementById('new-session').addEventListener('click', () => {
+            socket.close();
+            term.clear();
+            socket = new WebSocket(`ws://${window.location.host}`);
+            socket.onopen = () => {
+                console.log('New session started');
+            };
+            socket.onmessage = (event) => {
+                term.write(event.data);
+            };
+        });
+
+        // Clear terminal button
+        document.getElementById('clear-terminal').addEventListener('click', () => {
+            term.clear();
+        });
+
+        // Upload button
+        document.getElementById('upload-button').addEventListener('click', () => {
+            document.getElementById('upload').click();
+        });
+
+        document.getElementById('upload').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const data = reader.result;
+                    socket.send(`echo "${data.replace(/"/g, '\\"')}" > ${file.name}\n`);
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        // Download button
+        document.getElementById('download-button').addEventListener('click', () => {
+            const filename = prompt("Enter filename to download:");
+            if (filename) {
+                socket.send(`cat ${filename}\n`);
+                socket.onmessage = (event) => {
+                    const blob = new Blob([event.data], { type: 'text/plain' });
+                    const link = document.createElement('a');
+                    link.href = window.URL.createObjectURL(blob);
+                    link.download = filename;
+                    link.click();
+                    link.remove();
+                };
+            }
+        });
+
+        // Touch selection improvements for mobile
+        terminalContainer.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                term.focus();
+            }
+        });
 
         terminalContainer.addEventListener('touchstart', (e) => {
             if (e.touches.length === 1) {
-                isSelecting = true;
-                selectionStart = e.touches[0];
+                const timeoutId = setTimeout(() => {
+                    term.element.style.pointerEvents = 'none';
+                    term.element.style.userSelect = 'text';
+                    term.element.style.webkitUserSelect = 'text';
+                }, 500);
+
+                terminalContainer.addEventListener('touchend', () => {
+                    clearTimeout(timeoutId);
+                    term.element.style.pointerEvents = 'auto';
+                }, { once: true });
             }
         });
-
-        terminalContainer.addEventListener('touchmove', (e) => {
-            if (isSelecting && e.touches.length === 1) {
-                const selectionEnd = e.touches[0];
-                const start = term.buffer.active.viewportY + Math.floor(selectionStart.clientY / term.getOption('fontSize'));
-                const end = term.buffer.active.viewportY + Math.floor(selectionEnd.clientY / term.getOption('fontSize'));
-                term.selectLines(start, end);
-            }
-        });
-
-        terminalContainer.addEventListener('touchend', (e) => {
-            if (isSelecting) {
-                const selectedText = term.getSelection();
-                if (selectedText) {
-                    navigator.clipboard.writeText(selectedText).catch((err) => {
-                        console.error('Failed to copy text: ', err);
-                    });
-                }
-                isSelecting = false;
-                selectionStart = null;
-            }
-        });
-
-        // Zoom handling for mobile devices
-        let lastTouchDistance = null;
-        terminalContainer.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 2) {
-                const touchDistance = Math.hypot(
-                    e.touches[0].pageX - e.touches[1].pageX,
-                    e.touches[0].pageY - e.touches[1].pageY
-                );
-
-                if (lastTouchDistance !== null) {
-                    const delta = touchDistance - lastTouchDistance;
-                    if (delta > 0) {
-                        term.setOption('fontSize', term.getOption('fontSize') + 1);
-                    } else if (delta < 0) {
-                        term.setOption('fontSize', term.getOption('fontSize') - 1);
-                    }
-                    fitAddon.fit();
-                }
-
-                lastTouchDistance = touchDistance;
-            }
-        });
-
-        terminalContainer.addEventListener('touchend', (e) => {
-            lastTouchDistance = null;
-        });
-
     </script>
 </body>
 </html>
