@@ -78,6 +78,39 @@
             fitAddon.fit();
         });
 
+        // Handle long press for text selection on mobile devices
+        let isSelecting = false;
+        let selectionStart = null;
+
+        terminalContainer.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                isSelecting = true;
+                selectionStart = e.touches[0];
+            }
+        });
+
+        terminalContainer.addEventListener('touchmove', (e) => {
+            if (isSelecting && e.touches.length === 1) {
+                const selectionEnd = e.touches[0];
+                const start = term.buffer.active.viewportY + Math.floor(selectionStart.clientY / term.getOption('fontSize'));
+                const end = term.buffer.active.viewportY + Math.floor(selectionEnd.clientY / term.getOption('fontSize'));
+                term.selectLines(start, end);
+            }
+        });
+
+        terminalContainer.addEventListener('touchend', (e) => {
+            if (isSelecting) {
+                const selectedText = term.getSelection();
+                if (selectedText) {
+                    navigator.clipboard.writeText(selectedText).catch((err) => {
+                        console.error('Failed to copy text: ', err);
+                    });
+                }
+                isSelecting = false;
+                selectionStart = null;
+            }
+        });
+
         // Zoom handling for mobile devices
         let lastTouchDistance = null;
         terminalContainer.addEventListener('touchmove', (e) => {
@@ -105,26 +138,6 @@
             lastTouchDistance = null;
         });
 
-        // Text selection and copy-paste support
-        term.attachCustomKeyEventHandler((e) => {
-            if (e.ctrlKey && e.key === 'c') {
-                const selection = term.getSelection();
-                if (selection) {
-                    navigator.clipboard.writeText(selection);
-                    return false;
-                }
-            }
-            return true;
-        });
-
-        term.onSelectionChange(() => {
-            const selection = term.getSelection();
-            if (selection) {
-                navigator.clipboard.writeText(selection).catch((err) => {
-                    console.error('Failed to copy text: ', err);
-                });
-            }
-        });
     </script>
 </body>
 </html>
