@@ -2,8 +2,6 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const pty = require('node-pty');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -27,19 +25,7 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('message', (msg) => {
-        if (msg.startsWith('FILE:')) {
-            const [command, fileName, ...fileContent] = msg.split(':');
-            const filePath = path.join(process.env.HOME, fileName);
-            if (command === 'FILE_CREATE') {
-                fs.writeFileSync(filePath, fileContent.join(':'));
-                ptyProcess.write(`echo "File ${fileName} created." \r\n`);
-            } else if (command === 'FILE_DELETE') {
-                fs.unlinkSync(filePath);
-                ptyProcess.write(`echo "File ${fileName} deleted." \r\n`);
-            }
-        } else {
-            ptyProcess.write(msg);
-        }
+        ptyProcess.write(msg);
     });
 
     ws.on('close', () => {
