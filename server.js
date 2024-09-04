@@ -2,14 +2,19 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const pty = require('node-pty');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/' });
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 app.use(express.static('public'));
+app.use('/uploads', express.static('uploads'));
 
-let activeTerminals = {};
+const activeTerminals = {};
 
 wss.on('connection', (ws) => {
     console.log('New client connected');
@@ -46,6 +51,18 @@ wss.on('connection', (ws) => {
     });
 
     ws.send(JSON.stringify({ type: 'session', sessionId }));
+});
+
+// Handle file upload
+app.post('/upload', upload.single('file'), (req, res) => {
+    res.json({ filePath: `/uploads/${req.file.filename}` });
+});
+
+// Handle file download
+app.get('/download/:filename', (req, res) => {
+    const filename = req.params.filename;
+    const filePath = path.join('uploads', filename);
+    res.download(filePath);
 });
 
 const PORT = process.env.PORT || 8080;
