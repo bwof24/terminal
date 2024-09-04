@@ -14,6 +14,22 @@
             background-color: black;
             overflow: hidden;
         }
+        #toolbar {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background-color: #333;
+        }
+        #toolbar button, #toolbar input {
+            background-color: #555;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        #toolbar button:hover, #toolbar input:hover {
+            background-color: #666;
+        }
         #terminal-container {
             flex: 1;
             display: flex;
@@ -38,64 +54,112 @@
     </style>
 </head>
 <body>
+    <div id="toolbar">
+        <button id="new-session">New Session</button>
+        <button id="clear-terminal">Clear</button>
+        <input type="file" id="upload" style="display:none;">
+        <button id="upload-button">Upload</button>
+        <button id="download-button">Download</button>
+    </div>
     <div id="terminal-container"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
+        let socket;
+        let term;
+        let fitAddon;
         const terminalContainer = document.getElementById('terminal-container');
-        const term = new Terminal({
-            cursorBlink: true,
-            fontFamily: 'monospace',
-            theme: {
-                background: 'black',
-                foreground: 'white'
-            },
-            scrollback: 1000,
-            disableStdin: false,
-            rendererType: 'canvas'
-        });
-        const fitAddon = new FitAddon.FitAddon();
-        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
-        term.loadAddon(fitAddon);
-        term.loadAddon(webLinksAddon);
-        term.open(terminalContainer);
-        fitAddon.fit();
 
-        const socket = new WebSocket(`ws://${window.location.host}`);
-
-        socket.onopen = () => {
-            console.log('WebSocket connection established');
-        };
-
-        socket.onmessage = (event) => {
-            term.write(event.data);
-        };
-
-        term.onData((data) => {
-            socket.send(data);
-        });
-
-        window.addEventListener('resize', () => {
+        function initializeTerminal(sessionId) {
+            if (socket) {
+                socket.close();
+            }
+            term?.dispose();
+            term = new Terminal({
+                cursorBlink: true,
+                fontFamily: 'monospace',
+                theme: {
+                    background: 'black',
+                    foreground: 'white'
+                },
+                scrollback: 1000,
+                disableStdin: false,
+                rendererType: 'canvas'
+            });
+            fitAddon = new FitAddon.FitAddon();
+            const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+            term.loadAddon(fitAddon);
+            term.loadAddon(webLinksAddon);
+            term.open(terminalContainer);
             fitAddon.fit();
+
+            socket = new WebSocket(`ws://${window.location.host}`);
+            
+            socket.onopen = () => {
+                console.log('WebSocket connection established');
+                socket.send(JSON.stringify({ type: 'session', sessionId }));
+            };
+
+            socket.onmessage = (event) => {
+                const { type, data } = JSON.parse(event.data);
+                if (type === 'output') {
+                    term.write(data);
+                }
+            };
+
+            term.onData((data) => {
+                socket.send(JSON.stringify({ type: 'input', data }));
+            });
+
+            window.addEventListener('resize', () => {
+                fitAddon.fit();
+            });
+        }
+
+        document.getElementById('new-session').addEventListener('click', () => {
+            initializeTerminal();
         });
 
-        // Mobile text selection improvements
-        terminalContainer.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) {
-                const timeoutId = setTimeout(() => {
-                    // Enable text selection mode
-                    term.element.style.pointerEvents = 'none';
-                    term.element.style.userSelect = 'text';
-                    term.element.style.webkitUserSelect = 'text';
-                }, 500); // 500ms long press to trigger selection
+        document.getElementById('clear-terminal').addEventListener('click', () => {
+            term.clear();
+        });
 
-                terminalContainer.addEventListener('touchend', () => {
-                    clearTimeout(timeoutId);
-                    term.element.style.pointerEvents = 'auto';
-                }, { once: true });
+        document.getElementById('upload-button').addEventListener('click', () => {
+            document.getElementById('upload').click();
+        });
+
+        document.getElementById('upload').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const data = reader.result;
+                    const command = `echo "${data.replace(/"/g, '\\"')}" > ${file.name}\n`;
+                    socket.send(JSON.stringify({ type: 'command', data: command }));
+                };
+                reader.readAsText(file);
             }
         });
+
+        document.getElementById('download-button').addEventListener('click', () => {
+            const filename = prompt("Enter filename to download:");
+            if (filename) {
+                socket.send(JSON.stringify({ type: 'command', data: `cat ${filename}` }));
+                socket.onmessage = (event) => {
+                    const blob = new Blob([event.data], { type: 'text/plain' });
+                    const link = document.createElement('a');
+                    link.href = window.URL.createObjectURL(blob);
+                    link.download = filename;
+                    link.click();
+                    link.remove();
+                };
+            }
+        });
+
+        // Initialize terminal on page load
+        initializeTerminal();
     </script>
 </body>
 </html>
