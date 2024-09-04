@@ -1,192 +1,159 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Terminal</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
     <style>
-        body, html {
-            height: 100%;
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
             margin: 0;
+            padding: 0;
             display: flex;
             flex-direction: column;
-            background-color: black;
-            overflow: hidden;
+            align-items: center;
+            height: 100vh;
+            justify-content: center;
         }
-        #toolbar {
-            display: flex;
-            justify-content: space-between;
+        #terminal {
+            width: 80%;
+            height: 60vh;
+            border: 1px solid #333;
+            background: #000;
+            color: #0f0;
             padding: 10px;
-            background-color: #333;
+            overflow-y: scroll;
+            overflow-x: hidden;
+            font-family: monospace;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
         }
-        #toolbar button, #toolbar input {
-            background-color: #555;
-            color: white;
-            border: none;
-            padding: 5px 10px;
+        input, button {
+            width: 80%;
+            margin: 5px;
+            border: 1px solid #555;
+            background: #222;
+            color: #d4d4d4;
+            padding: 10px;
+            font-family: monospace;
+        }
+        button {
+            width: auto;
             cursor: pointer;
         }
-        #toolbar button:hover, #toolbar input:hover {
-            background-color: #666;
+        button:hover {
+            background: #444;
         }
-        #terminal-container {
-            flex: 1;
-            display: flex;
-            background-color: black;
-            overflow: auto;
+        #commandInput {
+            margin-bottom: 20px;
         }
-        .xterm {
-            background-color: black;
-            color: white;
-            width: 100%;
-            height: 100%;
-            user-select: text; /* Enable text selection */
-            -webkit-user-select: text; /* For Safari and other WebKit browsers */
+        .error {
+            color: #f00;
         }
-        ::-webkit-scrollbar {
-            width: 10px;
+        .stderr {
+            color: #f80;
         }
-        ::-webkit-scrollbar-thumb {
-            background-color: #555;
+        .stdout {
+            color: #0f0;
         }
     </style>
 </head>
 <body>
-    <div id="toolbar">
-        <button id="new-session">New Session</button>
-        <button id="clear-terminal">Clear</button>
-        <button id="save-file">Save</button>
-        <button id="exit-terminal">Exit</button>
-        <input type="file" id="upload" style="display:none;">
-        <button id="upload-button">Upload</button>
-        <input type="text" id="download-filename" placeholder="Filename to Download">
-        <button id="download-button">Download</button>
-    </div>
-    <div id="terminal-container"></div>
-
-    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
+    <div id="terminal"></div>
+    <input id="commandInput" type="text" placeholder="Enter command"/>
+    <button id="clearButton">Clear</button>
+    <button id="saveButton">Save</button>
+    
+    <!-- File upload and download -->
+    <input type="file" id="fileInput"/>
+    <button id="uploadButton">Upload</button>
+    <input type="text" id="downloadFilename" placeholder="Filename to download"/>
+    <button id="downloadButton">Download</button>
+    
     <script>
-        let socket;
-        let term;
-        let fitAddon;
-        const terminalContainer = document.getElementById('terminal-container');
-        let currentSessionId = '';
-        let isEditing = false;
+        const terminal = document.getElementById('terminal');
+        const commandInput = document.getElementById('commandInput');
+        const ws = new WebSocket('ws://localhost:8080');
+        
+        let commandHistory = [];
+        let historyIndex = -1;
 
-        function initializeTerminal(sessionId) {
-            if (socket) {
-                socket.close();
+        ws.onmessage = (event) => {
+            const message = event.data;
+            const newLine = document.createElement('div');
+            if (message.startsWith('Error:')) {
+                newLine.textContent = message;
+                newLine.className = 'error';
+            } else if (message.startsWith('stderr:')) {
+                newLine.textContent = message;
+                newLine.className = 'stderr';
+            } else if (message.startsWith('stdout:')) {
+                newLine.textContent = message;
+                newLine.className = 'stdout';
+            } else {
+                newLine.textContent = message;
             }
-            term?.dispose();
-            term = new Terminal({
-                cursorBlink: true,
-                fontFamily: 'monospace',
-                theme: {
-                    background: 'black',
-                    foreground: 'white'
-                },
-                scrollback: 1000,
-                disableStdin: false,
-                rendererType: 'canvas'
-            });
-            fitAddon = new FitAddon.FitAddon();
-            const webLinksAddon = new WebLinksAddon.WebLinksAddon();
-            term.loadAddon(fitAddon);
-            term.loadAddon(webLinksAddon);
-            term.open(terminalContainer);
-            fitAddon.fit();
+            terminal.appendChild(newLine);
+            terminal.scrollTop = terminal.scrollHeight;
+        };
 
-            socket = new WebSocket(`ws://${window.location.host}`);
-            
-            socket.onopen = () => {
-                console.log('WebSocket connection established');
-                currentSessionId = sessionId;
-                socket.send(JSON.stringify({ type: 'session', sessionId }));
-            };
-
-            socket.onmessage = (event) => {
-                const { type, data } = JSON.parse(event.data);
-                if (type === 'output') {
-                    term.write(data);
+        commandInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                const command = commandInput.value;
+                commandInput.value = '';
+                ws.send(command);
+                commandHistory.push(command);
+                historyIndex = commandHistory.length;
+            } else if (event.key === 'ArrowUp') {
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    commandInput.value = commandHistory[historyIndex];
                 }
-            };
-
-            term.onData((data) => {
-                if (isEditing) {
-                    socket.send(JSON.stringify({ type: 'input', data }));
+            } else if (event.key === 'ArrowDown') {
+                if (historyIndex < commandHistory.length - 1) {
+                    historyIndex++;
+                    commandInput.value = commandHistory[historyIndex];
                 } else {
-                    socket.send(JSON.stringify({ type: 'input', data }));
-                }
-            });
-
-            window.addEventListener('resize', () => {
-                fitAddon.fit();
-            });
-        }
-
-        document.getElementById('new-session').addEventListener('click', () => {
-            initializeTerminal('');
-        });
-
-        document.getElementById('clear-terminal').addEventListener('click', () => {
-            term.clear();
-        });
-
-        document.getElementById('save-file').addEventListener('click', () => {
-            if (isEditing) {
-                socket.send(JSON.stringify({ type: 'input', data: ':w\n' }));
-            } else {
-                console.log('Not in editing mode');
-            }
-        });
-
-        document.getElementById('exit-terminal').addEventListener('click', () => {
-            if (isEditing) {
-                socket.send(JSON.stringify({ type: 'input', data: ':q\n' }));
-                isEditing = false; // Assume exit from editing mode
-            } else {
-                if (socket) {
-                    socket.close();
-                    term.clear();
+                    historyIndex = commandHistory.length;
+                    commandInput.value = '';
                 }
             }
         });
 
-        document.getElementById('upload-button').addEventListener('click', () => {
-            document.getElementById('upload').click();
+        document.getElementById('clearButton').addEventListener('click', () => {
+            terminal.innerHTML = '';
         });
 
-        document.getElementById('upload').addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                const formData = new FormData();
-                formData.append('file', file);
-                fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    console.log('File uploaded successfully:', data.filePath);
-                })
-                .catch(error => {
-                    console.error('Error uploading file:', error);
-                });
-            }
+        document.getElementById('saveButton').addEventListener('click', () => {
+            const text = terminal.textContent;
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'terminal_output.txt';
+            a.click();
+            URL.revokeObjectURL(url);
         });
 
-        document.getElementById('download-button').addEventListener('click', () => {
-            const filename = document.getElementById('download-filename').value;
+        document.getElementById('uploadButton').addEventListener('click', () => {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.text())
+              .then(data => alert(data))
+              .catch(error => console.error('Error:', error));
+        });
+
+        document.getElementById('downloadButton').addEventListener('click', () => {
+            const filename = document.getElementById('downloadFilename').value;
             if (filename) {
                 window.location.href = `/download/${filename}`;
             }
         });
-
-        // Initialize terminal on page load
-        initializeTerminal();
     </script>
 </body>
 </html>
