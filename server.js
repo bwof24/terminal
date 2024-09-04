@@ -1,8 +1,9 @@
 const WebSocket = require('ws');
 const express = require('express');
-const { exec } = require('child_process');
-const multer = require('multer');
+const pty = require('pty.js');
 const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 
 const app = express();
 const port = 8080;
@@ -30,17 +31,23 @@ const server = app.listen(port, () => {
 const wss = new WebSocket.Server({ server });
 
 wss.on('connection', ws => {
+    const terminal = pty.spawn('bash', [], {
+        name: 'xterm-color',
+        cols: 80,
+        rows: 30,
+        cwd: process.env.HOME,
+        env: process.env
+    });
+
+    terminal.on('data', data => {
+        ws.send(data);
+    });
+
     ws.on('message', message => {
-        exec(message, (error, stdout, stderr) => {
-            if (error) {
-                ws.send(`Error: ${error.message}`);
-                return;
-            }
-            if (stderr) {
-                ws.send(`stderr: ${stderr}`);
-                return;
-            }
-            ws.send(`stdout: ${stdout}`);
-        });
+        terminal.write(message);
+    });
+
+    ws.on('close', () => {
+        terminal.end();
     });
 });
