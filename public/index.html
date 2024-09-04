@@ -55,38 +55,46 @@
 
         const ws = new WebSocket(`ws://${window.location.host}`);
 
-        // Server sends data to be written to the terminal
+        ws.onopen = () => {
+            console.log('WebSocket connection established');
+        };
+
         ws.onmessage = (event) => {
             term.write(event.data);
         };
 
-        // Handle typing input
+        // Handle terminal input
         term.onData((data) => {
-            ws.send(data); // Send input to the server
+            ws.send(data); // Send input to server via WebSocket
         });
 
-        // Handle resize
-        window.addEventListener('resize', () => {
-            fitAddon.fit();
-        });
-
-        // Handle mobile input with the hidden textarea
+        // Handle mobile input through hidden textarea
         const inputField = document.getElementById('input-field');
-        inputField.addEventListener('input', (event) => {
+        inputField.addEventListener('input', () => {
             const inputValue = inputField.value;
             if (inputValue) {
-                ws.send(inputValue);  // Send input to the server
-                term.write(inputValue); // Echo the input to the terminal for immediate feedback
-                inputField.value = ''; // Clear the input field
+                ws.send(inputValue);
+                inputField.value = ''; // Clear the input field after sending
             }
         });
 
-        // Focus hidden textarea on mobile device
         document.getElementById('terminal-container').addEventListener('click', () => {
             inputField.focus();
         });
 
-        // Clipboard handling
+        // Resize terminal on window resize
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+        });
+
+        // Prevent duplicate input
+        term.onData((data) => {
+            if (data) {
+                ws.send(data);
+            }
+        });
+
+        // Handle copy-to-clipboard functionality
         term.onSelectionChange(() => {
             const selection = term.getSelection();
             if (selection) {
@@ -96,13 +104,7 @@
             }
         });
 
-        // Prevent terminal from echoing input back
-        ws.onmessage = (event) => {
-            // Ensure only server responses are displayed
-            term.write(event.data);
-        };
-
-        // Disable auto-capitalization and other unwanted mobile input behaviors
+        // Set attributes to prevent mobile autocorrect, capitalization, etc.
         inputField.setAttribute('autocomplete', 'off');
         inputField.setAttribute('autocorrect', 'off');
         inputField.setAttribute('autocapitalize', 'off');
