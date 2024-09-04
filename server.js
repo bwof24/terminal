@@ -1,39 +1,41 @@
 const express = require('express');
 const http = require('http');
-const path = require('path');
 const WebSocket = require('ws');
 const pty = require('node-pty');
+const os = require('os');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve static files from the 'public' directory
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static('public'));
 
-// WebSocket connection for terminal
 wss.on('connection', (ws) => {
-    const shell = pty.spawn('bash', [], {
+    // Use bash for Linux
+    const shell = 'bash';
+
+    const ptyProcess = pty.spawn(shell, [], {
         name: 'xterm-color',
         cols: 80,
-        rows: 24,
+        rows: 30,
         cwd: process.env.HOME,
         env: process.env
     });
 
-    shell.on('data', (data) => {
+    ptyProcess.on('data', (data) => {
         ws.send(data);
     });
 
-    ws.on('message', (message) => {
-        shell.write(message);
+    ws.on('message', (msg) => {
+        ptyProcess.write(msg);
     });
 
     ws.on('close', () => {
-        shell.kill();
+        ptyProcess.kill();
     });
 });
 
-server.listen(8080, () => {
-    console.log('Server running on http://localhost:8080');
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
 });
