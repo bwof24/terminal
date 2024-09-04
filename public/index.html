@@ -22,6 +22,7 @@
             background-color: black;
             padding: 10px;
             flex-direction: column;
+            overflow: auto;
         }
         .xterm {
             background-color: black !important;
@@ -117,15 +118,15 @@
             term.write(event.data);
         };
 
+        // Handle debounced input to prevent repeated characters
         let debounceTimeout;
         term.onData((data) => {
-            // Fix repeated character issue by debouncing input
             if (debounceTimeout) {
                 clearTimeout(debounceTimeout);
             }
             debounceTimeout = setTimeout(() => {
                 ws.send(data);
-            }, 20);  // Adjusting debounce time to prevent repetition
+            }, 20); // 20ms debounce to fix repetition
         });
 
         // Handle mobile input through hidden textarea
@@ -144,6 +145,26 @@
 
         window.addEventListener('resize', () => {
             fitAddon.fit();
+        });
+
+        // Handle pinch-to-zoom for terminal resizing
+        let lastTouchEnd = 0;
+        document.addEventListener('touchstart', (event) => {
+            if (event.touches.length > 1) {
+                event.preventDefault(); // Prevent the default zoom
+            }
+        });
+
+        document.addEventListener('touchend', (event) => {
+            let now = new Date().getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+
+        document.addEventListener('gesturestart', (event) => {
+            event.preventDefault();
         });
 
         // Handle copy-to-clipboard functionality
