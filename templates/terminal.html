@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Terminal</title>
+</head>
+<body>
+    <h2>Web Terminal</h2>
+    <pre id="output"></pre>
+    <input type="text" id="command" placeholder="Enter command">
+    <button onclick="sendCommand()">Execute</button>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        var socket = io();
+
+        function sendCommand() {
+            var command = document.getElementById('command').value;
+            socket.emit('execute_command', command);
+            document.getElementById('command').value = '';
+        }
+
+        socket.on('command_output', function(data) {
+            var outputDiv = document.getElementById('output');
+            outputDiv.textContent += data.output + '\n';
+        });
+    </script>
+</body>
+</html>
