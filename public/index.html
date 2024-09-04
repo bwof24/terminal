@@ -12,24 +12,7 @@
             display: flex;
             flex-direction: column;
             background-color: black;
-            color: white;
             overflow: hidden;
-        }
-        #toolbar {
-            display: flex;
-            justify-content: space-around;
-            padding: 10px;
-            background-color: #333;
-        }
-        #toolbar button, #toolbar input {
-            background-color: #555;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-        #toolbar button:hover, #toolbar input:hover {
-            background-color: #666;
         }
         #terminal-container {
             flex: 1;
@@ -38,21 +21,24 @@
             overflow: auto;
         }
         .xterm {
+            background-color: black;
+            color: white;
             width: 100%;
             height: 100%;
+            user-select: text; /* Enable text selection */
+            -webkit-user-select: text; /* For Safari and other WebKit browsers */
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #555;
         }
     </style>
 </head>
 <body>
-    <div id="toolbar">
-        <button id="new-session">New Session</button>
-        <button id="clear-terminal">Clear</button>
-        <input type="file" id="upload" style="display:none;">
-        <button id="upload-button">Upload</button>
-        <button id="download-button">Download</button>
-    </div>
     <div id="terminal-container"></div>
-
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
@@ -66,7 +52,8 @@
                 foreground: 'white'
             },
             scrollback: 1000,
-            disableStdin: false
+            disableStdin: false,
+            rendererType: 'canvas'
         });
         const fitAddon = new FitAddon.FitAddon();
         const webLinksAddon = new WebLinksAddon.WebLinksAddon();
@@ -75,7 +62,7 @@
         term.open(terminalContainer);
         fitAddon.fit();
 
-        let socket = new WebSocket(`ws://${window.location.host}:8080`);
+        const socket = new WebSocket(`ws://${window.location.host}`);
 
         socket.onopen = () => {
             console.log('WebSocket connection established');
@@ -85,75 +72,28 @@
             term.write(event.data);
         };
 
-        term.onData(data => {
-            if (data === '\r' || data === '\n') {
-                return;
-            }
+        term.onData((data) => {
             socket.send(data);
         });
 
-        document.getElementById('new-session').addEventListener('click', () => {
-            socket.close();
-            term.clear();
-            socket = new WebSocket(`ws://${window.location.host}:8080`);
-            socket.onopen = () => {
-                console.log('New session started');
-            };
-            socket.onmessage = (event) => {
-                term.write(event.data);
-            };
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
         });
 
-        document.getElementById('clear-terminal').addEventListener('click', () => {
-            term.clear();
-        });
-
-        document.getElementById('upload-button').addEventListener('click', () => {
-            document.getElementById('upload').click();
-        });
-
-        document.getElementById('upload').addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const data = reader.result;
-                    socket.send(`echo "${data.replace(/"/g, '\\"')}" > ${file.name}\n`);
-                };
-                reader.readAsText(file);
-            }
-        });
-
-        document.getElementById('download-button').addEventListener('click', () => {
-            const filename = prompt("Enter filename to download:");
-            if (filename) {
-                socket.send(`cat ${filename}\n`);
-                socket.onmessage = (event) => {
-                    const blob = new Blob([event.data], { type: 'text/plain' });
-                    const link = document.createElement('a');
-                    link.href = window.URL.createObjectURL(blob);
-                    link.download = filename;
-                    link.click();
-                    link.remove();
-                };
-            }
-        });
-
-        // Mobile text selection
+        // Mobile text selection improvements
         terminalContainer.addEventListener('touchstart', (e) => {
-            term.focus();
-        });
+            if (e.touches.length === 1) {
+                const timeoutId = setTimeout(() => {
+                    // Enable text selection mode
+                    term.element.style.pointerEvents = 'none';
+                    term.element.style.userSelect = 'text';
+                    term.element.style.webkitUserSelect = 'text';
+                }, 500); // 500ms long press to trigger selection
 
-        terminalContainer.addEventListener('touchend', (e) => {
-            const selection = window.getSelection();
-            if (selection.toString()) {
-                e.preventDefault();
-                const range = selection.getRangeAt(0);
-                range.deleteContents();
-                const span = document.createElement('span');
-                span.textContent = selection.toString();
-                range.insertNode(span);
-                term.element.style.userSelect = 'text';
+                terminalContainer.addEventListener('touchend', () => {
+                    clearTimeout(timeoutId);
+                    term.element.style.pointerEvents = 'auto';
+                }, { once: true });
             }
         });
     </script>
