@@ -55,13 +55,14 @@
 
         const ws = new WebSocket(`ws://${window.location.host}`);
 
+        // Server sends data to be written to the terminal
         ws.onmessage = (event) => {
             term.write(event.data);
         };
 
+        // Handle typing input
         term.onData((data) => {
-            // Send the typed data to the backend via WebSocket
-            ws.send(data);
+            ws.send(data); // Send input to the server
         });
 
         // Handle resize
@@ -69,21 +70,22 @@
             fitAddon.fit();
         });
 
-        // Handle typing on mobile by using a hidden input field
+        // Handle mobile input with the hidden textarea
         const inputField = document.getElementById('input-field');
         inputField.addEventListener('input', (event) => {
             const inputValue = inputField.value;
             if (inputValue) {
-                ws.send(inputValue);
-                term.write(inputValue); // Directly write to the terminal
-                inputField.value = ''; // Clear the input field after sending data
+                ws.send(inputValue);  // Send input to the server
+                inputField.value = ''; // Clear the input field
             }
         });
 
+        // Focus hidden textarea on mobile device
         document.getElementById('terminal-container').addEventListener('click', () => {
-            inputField.focus(); // Focus the hidden input field when terminal is clicked
+            inputField.focus();
         });
 
+        // Clipboard handling
         term.onSelectionChange(() => {
             const selection = term.getSelection();
             if (selection) {
@@ -92,6 +94,12 @@
                 });
             }
         });
+
+        // Prevent terminal from echoing input back
+        ws.onmessage = (event) => {
+            // Ensure only server responses are displayed
+            term.write(event.data);
+        };
     </script>
 </body>
 </html>
