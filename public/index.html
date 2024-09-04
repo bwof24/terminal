@@ -7,6 +7,7 @@
       height: 100%;
       margin: 0;
       overflow: hidden;
+      background-color: #1e1e1e;
     }
     #terminal {
       height: 100%;
@@ -18,12 +19,26 @@
   <div id="terminal"></div>
   <script src="https://unpkg.com/xterm/lib/xterm.js"></script>
   <script>
-    const socket = new WebSocket('ws://localhost:3000');
+    const socket = new WebSocket('ws://localhost:8080');
     const terminal = new Terminal();
     terminal.open(document.getElementById('terminal'));
 
+    socket.onopen = () => {
+      console.log('Connected to the server.');
+    };
+
     socket.onmessage = (event) => {
       terminal.write(event.data);
+    };
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      terminal.write('Error connecting to the server.\n');
+    };
+
+    socket.onclose = () => {
+      console.log('Connection closed.');
+      terminal.write('Connection closed.\n');
     };
 
     terminal.onData((data) => {
