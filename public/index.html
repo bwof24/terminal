@@ -116,7 +116,19 @@
         });
 
         document.getElementById('copy-btn').addEventListener('click', () => {
-            navigator.clipboard.writeText(term.getSelection() || term.buffer.active.getLine(term.buffer.active.cursorY).translateToString());
+            let allText = '';
+            for (let i = 0; i < term.buffer.active.length; i++) {
+                const line = term.buffer.active.getLine(i);
+                if (line) {
+                    allText += line.translateToString() + '\n';
+                }
+            }
+
+            navigator.clipboard.writeText(allText).then(() => {
+                console.log('Copied to clipboard');
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
         });
     </script>
 </body>
