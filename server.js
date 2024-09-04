@@ -2,47 +2,53 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const pty = require('node-pty');
-const path = require('path');
-const basicAuth = require('express-basic-auth');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const authUsers = {
-  'username': 'password' // Replace with your username and password
-};
+app.use(express.static('public'));
 
-app.use(basicAuth({
-  users: authUsers,
-  challenge: true,
-  unauthorizedResponse: 'Unauthorized'
-}));
-
-app.use(express.static(path.join(__dirname, 'public')));
+let activeTerminals = {};
 
 wss.on('connection', (ws) => {
-  const ptyProcess = pty.spawn('bash', [], {
-    name: 'xterm-color',
-    cols: 80,
-    rows: 30,
-    cwd: process.env.HOME,
-    env: process.env
-  });
+    console.log('New client connected');
 
-  ptyProcess.on('data', (data) => {
-    ws.send(data);
-  });
+    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+    const ptyProcess = pty.spawn(shell, [], {
+        name: 'xterm-color',
+        cols: 80,
+        rows: 30,
+        cwd: process.env.HOME,
+        env: process.env
+    });
 
-  ws.on('message', (message) => {
-    ptyProcess.write(message);
-  });
+    const sessionId = Math.random().toString(36).substring(2);
+    activeTerminals[sessionId] = ptyProcess;
 
-  ws.on('close', () => {
-    ptyProcess.kill();
-  });
+    ptyProcess.on('data', (data) => {
+        ws.send(JSON.stringify({ type: 'output', data }));
+    });
+
+    ws.on('message', (message) => {
+        const { type, data } = JSON.parse(message);
+        if (type === 'input') {
+            ptyProcess.write(data);
+        } else if (type === 'command') {
+            ptyProcess.write(`${data}\n`);
+        }
+    });
+
+    ws.on('close', () => {
+        console.log('Client disconnected');
+        ptyProcess.kill();
+        delete activeTerminals[sessionId];
+    });
+
+    ws.send(JSON.stringify({ type: 'session', sessionId }));
 });
 
-server.listen(8080, () => {
-  console.log('Server is running on http://localhost:8080');
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
 });
