@@ -38,7 +38,9 @@ wss.on('connection', (ws) => {
     ws.on('message', (message) => {
         const { type, data } = JSON.parse(message);
         if (type === 'input') {
-            ptyProcess.write(data);
+            // Remove duplicate spaces and dots
+            const cleanedData = data.replace(/(\.\s*){2,}/g, '.').replace(/(\s{2,})/g, ' ');
+            ptyProcess.write(cleanedData);
         } else if (type === 'command') {
             ptyProcess.write(`${data}\n`);
         }
