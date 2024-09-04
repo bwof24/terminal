@@ -12,84 +12,36 @@
             display: flex;
             flex-direction: column;
             background-color: black;
-            font-family: monospace;
-            color: white;
             overflow: hidden;
         }
         #terminal-container {
             flex: 1;
             display: flex;
             background-color: black;
-            padding: 10px;
-            flex-direction: column;
             overflow: auto;
         }
         .xterm {
-            background-color: black !important;
-            color: white !important;
-        }
-        /* Toolbar for terminal customization */
-        #toolbar {
-            display: flex;
-            justify-content: space-between;
-            padding: 5px;
-            background-color: #333;
+            background-color: black;
             color: white;
+            width: 100%;
+            height: 100%;
         }
-        #toolbar button {
-            margin: 0 5px;
-            padding: 5px;
-            color: white;
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
             background-color: #555;
-            border: none;
-            cursor: pointer;
-        }
-        #toolbar button:hover {
-            background-color: #777;
-        }
-        #toolbar select {
-            padding: 5px;
-            color: white;
-            background-color: #555;
-            border: none;
-        }
-        /* Handle touch input improvements */
-        #input-field {
-            position: absolute;
-            opacity: 0;
-            pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <!-- Toolbar for customization and session management -->
-    <div id="toolbar">
-        <div>
-            <button id="new-session">New Session</button>
-            <button id="clear-screen">Clear Screen</button>
-        </div>
-        <div>
-            <select id="theme-select">
-                <option value="black">Black</option>
-                <option value="white">White</option>
-                <option value="solarized-dark">Solarized Dark</option>
-                <option value="solarized-light">Solarized Light</option>
-            </select>
-            <select id="font-size-select">
-                <option value="12">12px</option>
-                <option value="14">14px</option>
-                <option value="16">16px</option>
-                <option value="18">18px</option>
-                <option value="20">20px</option>
-            </select>
-        </div>
-    </div>
     <div id="terminal-container"></div>
-    <!-- Hidden input field for capturing mobile typing -->
-    <textarea id="input-field" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
+        const terminalContainer = document.getElementById('terminal-container');
         const term = new Terminal({
             cursorBlink: true,
             fontFamily: 'monospace',
@@ -97,116 +49,82 @@
                 background: 'black',
                 foreground: 'white'
             },
-            rendererType: 'canvas',
             scrollback: 1000,
             disableStdin: false,
-            fastScrollModifier: 'alt',
-            fastScrollSensitivity: 5
+            rendererType: 'canvas'
         });
         const fitAddon = new FitAddon.FitAddon();
+        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
         term.loadAddon(fitAddon);
-        term.open(document.getElementById('terminal-container'));
+        term.loadAddon(webLinksAddon);
+        term.open(terminalContainer);
         fitAddon.fit();
 
-        const ws = new WebSocket(`ws://${window.location.host}`);
+        const socket = new WebSocket(`ws://${window.location.host}`);
 
-        ws.onopen = () => {
+        socket.onopen = () => {
             console.log('WebSocket connection established');
         };
 
-        ws.onmessage = (event) => {
+        socket.onmessage = (event) => {
             term.write(event.data);
         };
 
-        // Handle debounced input to prevent repeated characters
-        let debounceTimeout;
         term.onData((data) => {
-            if (debounceTimeout) {
-                clearTimeout(debounceTimeout);
-            }
-            debounceTimeout = setTimeout(() => {
-                ws.send(data);
-            }, 20); // 20ms debounce to fix repetition
-        });
-
-        // Handle mobile input through hidden textarea
-        const inputField = document.getElementById('input-field');
-        inputField.addEventListener('input', () => {
-            const inputValue = inputField.value;
-            if (inputValue) {
-                ws.send(inputValue);
-                inputField.value = '';
-            }
-        });
-
-        document.getElementById('terminal-container').addEventListener('click', () => {
-            inputField.focus();
+            socket.send(data);
         });
 
         window.addEventListener('resize', () => {
             fitAddon.fit();
         });
 
-        // Handle pinch-to-zoom for terminal resizing
-        let lastTouchEnd = 0;
-        document.addEventListener('touchstart', (event) => {
-            if (event.touches.length > 1) {
-                event.preventDefault(); // Prevent the default zoom
+        // Zoom handling for mobile devices
+        let lastTouchDistance = null;
+        terminalContainer.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                const touchDistance = Math.hypot(
+                    e.touches[0].pageX - e.touches[1].pageX,
+                    e.touches[0].pageY - e.touches[1].pageY
+                );
+
+                if (lastTouchDistance !== null) {
+                    const delta = touchDistance - lastTouchDistance;
+                    if (delta > 0) {
+                        term.setOption('fontSize', term.getOption('fontSize') + 1);
+                    } else if (delta < 0) {
+                        term.setOption('fontSize', term.getOption('fontSize') - 1);
+                    }
+                    fitAddon.fit();
+                }
+
+                lastTouchDistance = touchDistance;
             }
         });
 
-        document.addEventListener('touchend', (event) => {
-            let now = new Date().getTime();
-            if (now - lastTouchEnd <= 300) {
-                event.preventDefault();
-            }
-            lastTouchEnd = now;
-        }, false);
-
-        document.addEventListener('gesturestart', (event) => {
-            event.preventDefault();
+        terminalContainer.addEventListener('touchend', (e) => {
+            lastTouchDistance = null;
         });
 
-        // Handle copy-to-clipboard functionality
+        // Text selection and copy-paste support
+        term.attachCustomKeyEventHandler((e) => {
+            if (e.ctrlKey && e.key === 'c') {
+                const selection = term.getSelection();
+                if (selection) {
+                    navigator.clipboard.writeText(selection);
+                    return false;
+                }
+            }
+            return true;
+        });
+
         term.onSelectionChange(() => {
             const selection = term.getSelection();
             if (selection) {
-                navigator.clipboard.writeText(selection).catch(err => {
+                navigator.clipboard.writeText(selection).catch((err) => {
                     console.error('Failed to copy text: ', err);
                 });
             }
         });
-
-        // Toolbar button event listeners
-        document.getElementById('new-session').addEventListener('click', () => {
-            window.open(window.location.href, '_blank');
-        });
-
-        document.getElementById('clear-screen').addEventListener('click', () => {
-            term.clear();
-        });
-
-        // Theme selection
-        document.getElementById('theme-select').addEventListener('change', (event) => {
-            const theme = event.target.value;
-            const themes = {
-                black: { background: 'black', foreground: 'white' },
-                white: { background: 'white', foreground: 'black' },
-                'solarized-dark': { background: '#002b36', foreground: '#839496' },
-                'solarized-light': { background: '#fdf6e3', foreground: '#657b83' },
-            };
-            term.setOption('theme', themes[theme]);
-        });
-
-        // Font size selection
-        document.getElementById('font-size-select').addEventListener('change', (event) => {
-            term.setOption('fontSize', parseInt(event.target.value, 10));
-            fitAddon.fit();
-        });
-
-        // Set initial settings
-        document.getElementById('theme-select').value = 'black';
-        document.getElementById('font-size-select').value = '14';
     </script>
 </body>
 </html>
