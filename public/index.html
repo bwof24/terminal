@@ -1,88 +1,157 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Terminal</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #1e1e1e;
-            color: #d4d4d4;
+        body, html {
+            height: 100%;
             margin: 0;
-            padding: 0;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            height: 100vh;
+            background-color: black;
+            overflow: hidden;
+        }
+        #controls {
+            display: flex;
             justify-content: center;
-        }
-        #terminal {
-            width: 80%;
-            height: 60vh;
-            border: 1px solid #333;
-            background: #000;
-            color: #0f0;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-        }
-        input, button {
-            width: 80%;
-            margin: 5px;
-            border: 1px solid #555;
-            background: #222;
-            color: #d4d4d4;
             padding: 10px;
-            font-family: monospace;
+            background-color: #333;
         }
         button {
-            width: auto;
+            margin: 0 5px;
+            padding: 5px 10px;
+            color: white;
+            background-color: #555;
+            border: none;
             cursor: pointer;
         }
         button:hover {
-            background: #444;
+            background-color: #777;
+        }
+        #terminal-container {
+            flex: 1;
+            display: flex;
+            background-color: black;
+            overflow: auto;
+        }
+        .xterm {
+            background-color: black;
+            color: white;
+            width: 100%;
+            height: 100%;
+            user-select: text; /* Enable text selection */
+            -webkit-user-select: text; /* For Safari and other WebKit browsers */
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #555;
         }
     </style>
 </head>
 <body>
-    <div id="terminal"></div>
-    <input type="file" id="fileInput"/>
-    <button id="uploadButton">Upload</button>
-    <input type="text" id="downloadFilename" placeholder="Filename to download"/>
-    <button id="downloadButton">Download</button>
-
+    <div id="controls">
+        <button id="clear-btn">Clear</button>
+        <button id="save-btn">Save (Ctrl+S)</button>
+        <button id="exit-btn">Exit (Ctrl+X)</button>
+        <button id="copy-btn">Copy</button>
+    </div>
+    <div id="terminal-container"></div>
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
-        const { Terminal } = window.xterm;
-        const terminal = new Terminal();
-        terminal.open(document.getElementById('terminal'));
+        const terminalContainer = document.getElementById('terminal-container');
+        const term = new Terminal({
+            cursorBlink: true,
+            fontFamily: 'monospace',
+            theme: {
+                background: 'black',
+                foreground: 'white'
+            },
+            scrollback: 1000,
+            disableStdin: false,
+            rendererType: 'canvas'
+        });
+        const fitAddon = new FitAddon.FitAddon();
+        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+        term.loadAddon(fitAddon);
+        term.loadAddon(webLinksAddon);
+        term.open(terminalContainer);
+        fitAddon.fit();
 
-        const ws = new WebSocket('ws://localhost:8080');
+        const socket = new WebSocket(`ws://${window.location.host}`);
 
-        ws.onmessage = (event) => {
-            terminal.write(event.data);
+        socket.onopen = () => {
+            console.log('WebSocket connection established');
         };
 
-        terminal.onData(data => {
-            ws.send(data);
+        socket.onmessage = (event) => {
+            term.write(event.data);
+        };
+
+        term.onData((data) => {
+            socket.send(data);
         });
 
-        document.getElementById('uploadButton').addEventListener('click', () => {
-            const fileInput = document.getElementById('fileInput');
-            const file = fileInput.files[0];
-            const formData = new FormData();
-            formData.append('file', file);
-            
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            }).then(response => response.text())
-              .then(data => alert(data))
-              .catch(error => console.error('Error:', error));
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
         });
 
-        document.getElementById('downloadButton').addEventListener('click', () => {
-            const filename = document.getElementById('downloadFilename').value;
-            if (filename) {
-                window.location.href = `/download/${filename}`;
+        document.getElementById('clear-btn').addEventListener('click', () => {
+            term.clear();
+        });
+
+        document.getElementById('save-btn').addEventListener('click', () => {
+            socket.send('\x13'); // Send Ctrl+S
+        });
+
+        document.getElementById('exit-btn').addEventListener('click', () => {
+            socket.send('\x18'); // Send Ctrl+X
+        });
+
+        document.getElementById('copy-btn').addEventListener('click', () => {
+            navigator.clipboard.writeText(term.getSelection() || term.buffer.active.getLine(term.buffer.active.cursorY).translateToString());
+        });
+
+        // Add event listener to capture clicks on terminal text
+        term.element.addEventListener('click', (event) => {
+            const text = term.buffer.active.getLine(term.buffer.active.cursorY).translateToString();
+
+            if (text.includes('^X Exit')) {
+                socket.send('\x18'); // Ctrl+X
+            } else if (text.includes('^O Write Out')) {
+                socket.send('\x13'); // Ctrl+S
+            } else if (text.includes('^G Help')) {
+                socket.send('\x07'); // Ctrl+G
+            } else if (text.includes('^R Read File')) {
+                socket.send('\x12'); // Ctrl+R
+            } else if (text.includes('^W Where Is')) {
+                socket.send('\x17'); // Ctrl+W
+            } else if (text.includes('^K Cut')) {
+                socket.send('\x0B'); // Ctrl+K
+            } else if (text.includes('^U Paste')) {
+                socket.send('\x15'); // Ctrl+U
+            } else if (text.includes('^C Location')) {
+                socket.send('\x03'); // Ctrl+C
+            } else if (text.includes('M-U Undo')) {
+                socket.send('\x1B+u'); // Alt+U
+            } else if (text.includes('M-6 Copy')) {
+                socket.send('\x1B+6'); // Alt+6
+            } else if (text.includes('M-] To Bracket')) {
+                socket.send('\x1B+]'); // Alt+]
+            } else if (text.includes('M-Q Previous')) {
+                socket.send('\x1B+q'); // Alt+Q
+            } else if (text.includes('M-W Next')) {
+                socket.send('\x1B+w'); // Alt+W
+            } else if (text.includes('[ Read 79 lines ]')) {
+                // Handle specific text click
+                console.log('Clicked [ Read 79 lines ]');
             }
         });
     </script>
