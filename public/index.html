@@ -12,153 +12,101 @@
             display: flex;
             flex-direction: column;
             background-color: black;
-            overflow: hidden;
-        }
-        #toolbar {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px;
-            background-color: #333;
-        }
-        #toolbar button, #toolbar input {
-            background-color: #555;
+            font-family: monospace;
             color: white;
-            border: none;
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-        #toolbar button:hover, #toolbar input:hover {
-            background-color: #666;
         }
         #terminal-container {
             flex: 1;
             display: flex;
             background-color: black;
-            overflow: auto;
+            padding: 10px;
         }
-        .xterm {
-            background-color: black;
+        #file-management {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background-color: #333;
+        }
+        #preferences {
+            padding: 10px;
+            background-color: #333;
+        }
+        button {
+            padding: 10px;
+            margin: 5px;
+            background-color: #444;
             color: white;
-            width: 100%;
-            height: 100%;
-            user-select: text; /* Enable text selection */
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
         }
-        ::-webkit-scrollbar {
-            width: 10px;
-        }
-        ::-webkit-scrollbar-thumb {
+        button:hover {
             background-color: #555;
         }
     </style>
 </head>
 <body>
-    <div id="toolbar">
-        <button id="new-session">New Session</button>
-        <button id="clear-terminal">Clear</button>
-        <input type="file" id="upload" style="display:none;">
-        <button id="upload-button">Upload</button>
-        <input type="text" id="download-filename" placeholder="Filename to Download">
-        <button id="download-button">Download</button>
+    <div id="file-management">
+        <input type="file" id="fileUpload" />
+        <button id="uploadBtn">Upload File</button>
+        <button id="downloadBtn">Download File</button>
+    </div>
+    <div id="preferences">
+        <label for="fontSize">Font Size:</label>
+        <input type="number" id="fontSize" value="14" />
+        <button id="savePreferences">Save Preferences</button>
     </div>
     <div id="terminal-container"></div>
-
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
-        let socket;
-        let term;
-        let fitAddon;
-        const terminalContainer = document.getElementById('terminal-container');
+        const term = new Terminal();
+        const fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(document.getElementById('terminal-container'));
+        fitAddon.fit();
 
-        function initializeTerminal(sessionId) {
-            if (socket) {
-                socket.close();
-            }
-            if (term) {
-                term.dispose();
-            }
-            term = new Terminal({
-                cursorBlink: true,
-                fontFamily: 'monospace',
-                theme: {
-                    background: 'black',
-                    foreground: 'white'
-                },
-                scrollback: 1000,
-                disableStdin: false,
-                rendererType: 'canvas'
-            });
-            fitAddon = new FitAddon.FitAddon();
-            const webLinksAddon = new WebLinksAddon.WebLinksAddon();
-            term.loadAddon(fitAddon);
-            term.loadAddon(webLinksAddon);
-            term.open(terminalContainer);
-            fitAddon.fit();
+        const ws = new WebSocket(`ws://${window.location.host}`);
 
-            socket = new WebSocket(`ws://${window.location.host}`);
-            
-            socket.onopen = () => {
-                console.log('WebSocket connection established');
-                socket.send(JSON.stringify({ type: 'session', sessionId }));
-            };
+        ws.onmessage = (event) => {
+            term.write(event.data);
+        };
 
-            socket.onmessage = (event) => {
-                const { type, data } = JSON.parse(event.data);
-                if (type === 'output') {
-                    term.write(data);
-                }
-            };
-
-            term.onData((data) => {
-                socket.send(JSON.stringify({ type: 'input', data }));
-            });
-
-            window.addEventListener('resize', () => {
-                fitAddon.fit();
-            });
-        }
-
-        document.getElementById('new-session').addEventListener('click', () => {
-            initializeTerminal();
+        term.onData((data) => {
+            ws.send(data);
         });
 
-        document.getElementById('clear-terminal').addEventListener('click', () => {
-            term.clear();
+        document.getElementById('uploadBtn').addEventListener('click', () => {
+            const fileInput = document.getElementById('fileUpload');
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            }).then(response => response.text())
+              .then(message => alert(message));
         });
 
-        document.getElementById('upload-button').addEventListener('click', () => {
-            document.getElementById('upload').click();
-        });
-
-        document.getElementById('upload').addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                const formData = new FormData();
-                formData.append('file', file);
-                fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    console.log('File uploaded successfully:', data.filePath);
-                })
-                .catch(error => {
-                    console.error('Error uploading file:', error);
-                });
-            }
-        });
-
-        document.getElementById('download-button').addEventListener('click', () => {
-            const filename = document.getElementById('download-filename').value;
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const filename = prompt('Enter filename to download:');
             if (filename) {
                 window.location.href = `/download/${filename}`;
             }
         });
 
-        // Initialize terminal on page load
-        initializeTerminal();
+        document.getElementById('savePreferences').addEventListener('click', () => {
+            const fontSize = document.getElementById('fontSize').value;
+            const preferences = { fontSize };
+
+            fetch('/save-preferences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: 'user-id', preferences })
+            }).then(response => response.text())
+              .then(message => alert(message));
+        });
     </script>
 </body>
 </html>
