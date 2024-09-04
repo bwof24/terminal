@@ -60,6 +60,7 @@
         };
 
         term.onData((data) => {
+            // Send the typed data to the backend via WebSocket
             ws.send(data);
         });
 
@@ -71,9 +72,12 @@
         // Handle typing on mobile by using a hidden input field
         const inputField = document.getElementById('input-field');
         inputField.addEventListener('input', (event) => {
-            term.write(inputField.value);
-            ws.send(inputField.value);
-            inputField.value = ''; // Clear the input field after sending data
+            const inputValue = inputField.value;
+            if (inputValue) {
+                ws.send(inputValue);
+                term.write(inputValue); // Directly write to the terminal
+                inputField.value = ''; // Clear the input field after sending data
+            }
         });
 
         document.getElementById('terminal-container').addEventListener('click', () => {
