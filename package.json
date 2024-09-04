@@ -1,7 +1,7 @@
 {
   "name": "web-terminal",
   "version": "1.0.0",
-  "description": "A minimal web-based terminal interface.",
+  "description": "A fully-featured web-based terminal with SSH support and file management.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,8 +9,13 @@
   },
   "dependencies": {
     "express": "",
+    "express-session": "",
+    "multer": "",
     "node-pty": "",
-    "ws": ""
+    "ws": "",
+    "express-rate-limit": "",
+    "body-parser": "",
+    "fs-extra": ""
   },
   "devDependencies": {
     "nodemon": ""
