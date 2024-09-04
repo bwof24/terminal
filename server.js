@@ -25,6 +25,7 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('message', (msg) => {
+        // Write each keypress directly to the terminal
         ptyProcess.write(msg);
     });
 
