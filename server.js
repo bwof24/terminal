@@ -20,8 +20,8 @@ wss.on('connection', ws => {
         // Handle file upload
         if (message.startsWith('echo ')) {
             const [ , content ] = message.split('> ');
-            const fileName = content.split('\n')[0];
-            const fileContent = content.substring(fileName.length + 1);
+            const [fileName, ...fileContentArray] = content.split('\n');
+            const fileContent = fileContentArray.join('\n');
             fs.writeFile(path.join(__dirname, fileName), fileContent, err => {
                 if (err) {
                     ws.send('Error writing file\n');
