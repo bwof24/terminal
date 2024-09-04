@@ -1,112 +1,34 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Terminal</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
-    <style>
-        body, html {
-            height: 100%;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            background-color: black;
-            font-family: monospace;
-            color: white;
-        }
-        #terminal-container {
-            flex: 1;
-            display: flex;
-            background-color: black;
-            padding: 10px;
-        }
-        #file-management {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px;
-            background-color: #333;
-        }
-        #preferences {
-            padding: 10px;
-            background-color: #333;
-        }
-        button {
-            padding: 10px;
-            margin: 5px;
-            background-color: #444;
-            color: white;
-            border: none;
-            cursor: pointer;
-            border-radius: 5px;
-        }
-        button:hover {
-            background-color: #555;
-        }
-    </style>
+  <link rel="stylesheet" href="https://unpkg.com/xterm/css/xterm.css">
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+    #terminal {
+      height: 100%;
+      width: 100%;
+    }
+  </style>
 </head>
 <body>
-    <div id="file-management">
-        <input type="file" id="fileUpload" />
-        <button id="uploadBtn">Upload File</button>
-        <button id="downloadBtn">Download File</button>
-    </div>
-    <div id="preferences">
-        <label for="fontSize">Font Size:</label>
-        <input type="number" id="fontSize" value="14" />
-        <button id="savePreferences">Save Preferences</button>
-    </div>
-    <div id="terminal-container"></div>
-    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script>
-        const term = new Terminal();
-        const fitAddon = new FitAddon.FitAddon();
-        term.loadAddon(fitAddon);
-        term.open(document.getElementById('terminal-container'));
-        fitAddon.fit();
+  <div id="terminal"></div>
+  <script src="https://unpkg.com/xterm/lib/xterm.js"></script>
+  <script>
+    const socket = new WebSocket('ws://localhost:3000');
+    const terminal = new Terminal();
+    terminal.open(document.getElementById('terminal'));
 
-        const ws = new WebSocket(`ws://${window.location.host}`);
+    socket.onmessage = (event) => {
+      terminal.write(event.data);
+    };
 
-        ws.onmessage = (event) => {
-            term.write(event.data);
-        };
-
-        term.onData((data) => {
-            ws.send(data);
-        });
-
-        document.getElementById('uploadBtn').addEventListener('click', () => {
-            const fileInput = document.getElementById('fileUpload');
-            const file = fileInput.files[0];
-            const formData = new FormData();
-            formData.append('file', file);
-
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            }).then(response => response.text())
-              .then(message => alert(message));
-        });
-
-        document.getElementById('downloadBtn').addEventListener('click', () => {
-            const filename = prompt('Enter filename to download:');
-            if (filename) {
-                window.location.href = `/download/${filename}`;
-            }
-        });
-
-        document.getElementById('savePreferences').addEventListener('click', () => {
-            const fontSize = document.getElementById('fontSize').value;
-            const preferences = { fontSize };
-
-            fetch('/save-preferences', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: 'user-id', preferences })
-            }).then(response => response.text())
-              .then(message => alert(message));
-        });
-    </script>
+    terminal.onData((data) => {
+      socket.send(data);
+    });
+  </script>
 </body>
 </html>
