@@ -117,26 +117,19 @@
                 fitAddon.fit();
             });
 
-            // Mobile text selection
+            // Ensure proper touch handling on mobile devices
             terminalContainer.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
                     term.focus();
                 }
             });
 
-            // Adjust selection handling
+            // Improve selection on mobile
             terminalContainer.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
-                    const timeoutId = setTimeout(() => {
-                        term.element.style.pointerEvents = 'none';
-                        term.element.style.userSelect = 'text';
-                        term.element.style.webkitUserSelect = 'text';
-                    }, 500);
-
-                    terminalContainer.addEventListener('touchend', () => {
-                        clearTimeout(timeoutId);
-                        term.element.style.pointerEvents = 'auto';
-                    }, { once: true });
+                    term.element.style.userSelect = 'text';
+                    term.element.style.webkitUserSelect = 'text';
+                    term.element.style.pointerEvents = 'auto';
                 }
             });
         }
