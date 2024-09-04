@@ -4,9 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const app = express();
-const port = 3000;
+const port = 8080;
 
-// Serve static files
+// Serve static files from 'public' directory
 app.use(express.static('public'));
 
 const wss = new WebSocket.Server({ noServer: true });
@@ -17,6 +17,7 @@ wss.on('connection', ws => {
     ws.on('message', message => {
         console.log(`Received message: ${message}`);
 
+        // Handle file upload
         if (message.startsWith('echo ')) {
             const [ , content ] = message.split('> ');
             const fileName = content.split('\n')[0];
@@ -38,6 +39,7 @@ wss.on('connection', ws => {
                 }
             });
         } else {
+            // Execute terminal command
             exec(message, (error, stdout, stderr) => {
                 if (error) {
                     ws.send(`Error: ${stderr}\n`);
