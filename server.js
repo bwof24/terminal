@@ -1,69 +1,80 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const WebSocket = require('ws');
 const pty = require('node-pty');
-const fs = require('fs');
-const path = require('path');
+const session = require('express-session');
 const multer = require('multer');
-const upload = multer({ dest: 'uploads/' });
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(express.static('public'));
-app.use('/uploads', express.static('uploads'));
+// Middleware
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(session({
+    secret: 'your-secret-key',
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: false }
+}));
 
-const activeTerminals = {};
+// File upload setup
+const upload = multer({ dest: 'uploads/' });
 
+app.post('/upload', upload.single('file'), (req, res) => {
+    res.send('File uploaded successfully.');
+});
+
+app.get('/download/:filename', (req, res) => {
+    const file = path.join(__dirname, 'uploads', req.params.filename);
+    res.download(file);
+});
+
+app.post('/create-file', (req, res) => {
+    const { filename } = req.body;
+    fs.writeFile(path.join(__dirname, filename), '', (err) => {
+        if (err) {
+            return res.status(500).send('Failed to create file.');
+        }
+        res.send('File created successfully.');
+    });
+});
+
+app.post('/save-file', (req, res) => {
+    const { filename, content } = req.body;
+    fs.writeFile(path.join(__dirname, filename), content, (err) => {
+        if (err) {
+            return res.status(500).send('Failed to save file.');
+        }
+        res.send('File saved successfully.');
+    });
+});
+
+// WebSocket connection for terminal
 wss.on('connection', (ws) => {
-    console.log('New client connected');
-
-    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
-    const ptyProcess = pty.spawn(shell, [], {
+    const shell = pty.spawn('bash', [], {
         name: 'xterm-color',
         cols: 80,
-        rows: 30,
+        rows: 24,
         cwd: process.env.HOME,
         env: process.env
     });
 
-    const sessionId = Math.random().toString(36).substring(2);
-    activeTerminals[sessionId] = ptyProcess;
-
-    ptyProcess.on('data', (data) => {
-        ws.send(JSON.stringify({ type: 'output', data }));
+    shell.on('data', (data) => {
+        ws.send(data);
     });
 
     ws.on('message', (message) => {
-        const { type, data } = JSON.parse(message);
-        if (type === 'input' || type === 'command') {
-            ptyProcess.write(data);
-        }
+        shell.write(message);
     });
 
     ws.on('close', () => {
-        console.log('Client disconnected');
-        ptyProcess.kill();
-        delete activeTerminals[sessionId];
+        shell.kill();
     });
-
-    ws.send(JSON.stringify({ type: 'session', sessionId }));
 });
 
-// Handle file upload
-app.post('/upload', upload.single('file'), (req, res) => {
-    res.json({ filePath: `/uploads/${req.file.filename}` });
-});
-
-// Handle file download
-app.get('/download/:filename', (req, res) => {
-    const filename = req.params.filename;
-    const filePath = path.join('uploads', filename);
-    res.download(filePath);
-});
-
-const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
+server.listen(8080, () => {
+    console.log('Server running on http://localhost:8080');
 });
