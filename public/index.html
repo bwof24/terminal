@@ -58,7 +58,7 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
         const terminalContainer = document.getElementById('terminal-container');
-        let term = new Terminal({
+        const term = new Terminal({
             cursorBlink: true,
             fontFamily: 'monospace',
             theme: {
@@ -76,7 +76,7 @@
         term.open(terminalContainer);
         fitAddon.fit();
 
-        let socket = new WebSocket(`ws://${window.location.host}`);
+        let socket = new WebSocket(`ws://${window.location.host}:8080`);
 
         socket.onopen = () => {
             console.log('WebSocket connection established');
@@ -97,11 +97,10 @@
             fitAddon.fit();
         });
 
-        // New session button
         document.getElementById('new-session').addEventListener('click', () => {
             socket.close();
             term.clear();
-            socket = new WebSocket(`ws://${window.location.host}`);
+            socket = new WebSocket(`ws://${window.location.host}:8080`);
             socket.onopen = () => {
                 console.log('New session started');
             };
@@ -110,12 +109,10 @@
             };
         });
 
-        // Clear terminal button
         document.getElementById('clear-terminal').addEventListener('click', () => {
             term.clear();
         });
 
-        // Upload button
         document.getElementById('upload-button').addEventListener('click', () => {
             document.getElementById('upload').click();
         });
@@ -132,7 +129,6 @@
             }
         });
 
-        // Download button
         document.getElementById('download-button').addEventListener('click', () => {
             const filename = prompt("Enter filename to download:");
             if (filename) {
@@ -148,7 +144,6 @@
             }
         });
 
-        // Touch selection improvements for mobile
         terminalContainer.addEventListener('touchstart', (e) => {
             if (e.touches.length === 1) {
                 term.focus();
