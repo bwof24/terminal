@@ -37,10 +37,8 @@ wss.on('connection', (ws) => {
 
     ws.on('message', (message) => {
         const { type, data } = JSON.parse(message);
-        if (type === 'input') {
+        if (type === 'input' || type === 'command') {
             ptyProcess.write(data);
-        } else if (type === 'command') {
-            ptyProcess.write(`${data}\n`);
         }
     });
 
