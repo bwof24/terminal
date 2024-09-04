@@ -3,11 +3,21 @@ const http = require('http');
 const WebSocket = require('ws');
 const pty = require('node-pty');
 const path = require('path');
-const fs = require('fs');
+const basicAuth = require('express-basic-auth');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+const authUsers = {
+  'username': 'password' // Replace with your username and password
+};
+
+app.use(basicAuth({
+  users: authUsers,
+  challenge: true,
+  unauthorizedResponse: 'Unauthorized'
+}));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -33,6 +43,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(3000, () => {
-  console.log('Server is running on http://localhost:3000');
+server.listen(8080, () => {
+  console.log('Server is running on http://localhost:8080');
 });
