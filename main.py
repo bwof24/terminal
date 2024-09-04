@@ -1,30 +1,49 @@
-from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit
-import subprocess
-import shlex
+const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
+const pty = require('node-pty');
 
-app = Flask(__name__)
-socketio = SocketIO(app)
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-@app.route('/')
-def index():
-    return render_template('terminal.html')
+app.use(express.static('public'));
 
-@socketio.on('execute_command')
-def handle_execute_command(command):
-    # Split the command into shell arguments
-    args = shlex.split(command)
-    
-    try:
-        # Execute the command
-        result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        
-        # Send the output back to the client
-        output = result.stdout + result.stderr
-    except Exception as e:
-        output = str(e)
-    
-    emit('command_output', {'output': output})
+wss.on('connection', (ws) => {
+    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
 
-if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=8080)
+    const ptyProcess = pty.spawn(shell, [], {
+        name: 'xterm-color',
+        cols: 80,
+        rows: 30,
+        cwd: process.env.HOME,
+        env: process.env
+    });
+
+    ptyProcess.on('data', (data) => {
+        ws.send(data);
+    });
+
+    ws.on('message', (msg) => {
+        // Write each keypress directly to the terminal
+        ptyProcess.write(msg);
+    });
+
+    ws.on('close', () => {
+        ptyProcess.kill();
+    });
+
+    // Error handling
+    ws.on('error', (err) => {
+        console.error('WebSocket error:', err);
+    });
+
+    ptyProcess.on('error', (err) => {
+        console.error('PTY error:', err);
+    });
+});
+
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
+});
