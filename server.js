@@ -16,6 +16,15 @@ app.use('/uploads', express.static('uploads'));
 
 const activeTerminals = {};
 
+// Utility function to clean input
+function cleanInput(data) {
+    // Replace multiple consecutive spaces and dots with a single instance
+    return data
+        .replace(/(\s{2,})/g, ' ')           // Replace multiple spaces with a single space
+        .replace(/(\.\s*){2,}/g, '.')        // Replace multiple dots with a single dot
+        .replace(/(\s*\.\s*){2,}/g, '.');    // Replace dot surrounded by spaces and repeated with a single dot
+}
+
 wss.on('connection', (ws) => {
     console.log('New client connected');
 
@@ -39,9 +48,7 @@ wss.on('connection', (ws) => {
         const { type, data } = JSON.parse(message);
         if (type === 'input') {
             // Clean input data
-            const cleanedData = data
-                .replace(/(\s{2,})/g, ' ')          // Replace multiple spaces with a single space
-                .replace(/(\.\s*){2,}/g, '.');      // Replace multiple dots with a single dot
+            const cleanedData = cleanInput(data);
             ptyProcess.write(cleanedData);
         } else if (type === 'command') {
             ptyProcess.write(`${data}\n`);
