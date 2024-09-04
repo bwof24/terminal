@@ -36,7 +36,7 @@
 <body>
     <div id="terminal-container"></div>
     <!-- Hidden input field for capturing mobile typing -->
-    <textarea id="input-field"></textarea>
+    <textarea id="input-field" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script>
@@ -76,6 +76,7 @@
             const inputValue = inputField.value;
             if (inputValue) {
                 ws.send(inputValue);  // Send input to the server
+                term.write(inputValue); // Echo the input to the terminal for immediate feedback
                 inputField.value = ''; // Clear the input field
             }
         });
@@ -100,6 +101,12 @@
             // Ensure only server responses are displayed
             term.write(event.data);
         };
+
+        // Disable auto-capitalization and other unwanted mobile input behaviors
+        inputField.setAttribute('autocomplete', 'off');
+        inputField.setAttribute('autocorrect', 'off');
+        inputField.setAttribute('autocapitalize', 'off');
+        inputField.setAttribute('spellcheck', 'false');
     </script>
 </body>
 </html>
