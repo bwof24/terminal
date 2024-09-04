@@ -9,9 +9,12 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static('public'));
 
-wss.on('connection', (ws) => {
-    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+let activeTerminals = {};
 
+wss.on('connection', (ws) => {
+    console.log('New client connected');
+
+    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
     const ptyProcess = pty.spawn(shell, [], {
         name: 'xterm-color',
         cols: 80,
@@ -20,18 +23,29 @@ wss.on('connection', (ws) => {
         env: process.env
     });
 
+    const sessionId = Math.random().toString(36).substring(2);
+    activeTerminals[sessionId] = ptyProcess;
+
     ptyProcess.on('data', (data) => {
-        ws.send(data);
+        ws.send(JSON.stringify({ type: 'output', data }));
     });
 
-    ws.on('message', (msg) => {
-        // Write each keypress directly to the terminal
-        ptyProcess.write(msg);
+    ws.on('message', (message) => {
+        const { type, data } = JSON.parse(message);
+        if (type === 'input') {
+            ptyProcess.write(data);
+        } else if (type === 'command') {
+            ptyProcess.write(`${data}\n`);
+        }
     });
 
     ws.on('close', () => {
+        console.log('Client disconnected');
         ptyProcess.kill();
+        delete activeTerminals[sessionId];
     });
+
+    ws.send(JSON.stringify({ type: 'session', sessionId }));
 });
 
 const PORT = process.env.PORT || 8080;
