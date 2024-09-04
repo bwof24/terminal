@@ -66,8 +66,7 @@
                 foreground: 'white'
             },
             scrollback: 1000,
-            disableStdin: false,
-            rendererType: 'canvas'
+            disableStdin: false
         });
         const fitAddon = new FitAddon.FitAddon();
         const webLinksAddon = new WebLinksAddon.WebLinksAddon();
@@ -86,15 +85,11 @@
             term.write(event.data);
         };
 
-        term.onData((data) => {
+        term.onData(data => {
             if (data === '\r' || data === '\n') {
                 return;
             }
             socket.send(data);
-        });
-
-        window.addEventListener('resize', () => {
-            fitAddon.fit();
         });
 
         document.getElementById('new-session').addEventListener('click', () => {
@@ -144,16 +139,22 @@
             }
         });
 
+        // Mobile text selection
         terminalContainer.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) {
-                term.focus();
-            }
+            term.focus();
         });
 
-        terminalContainer.addEventListener('touchend', () => {
-            term.element.style.pointerEvents = 'auto';
-            term.element.style.userSelect = 'text';
-            term.element.style.webkitUserSelect = 'text';
+        terminalContainer.addEventListener('touchend', (e) => {
+            const selection = window.getSelection();
+            if (selection.toString()) {
+                e.preventDefault();
+                const range = selection.getRangeAt(0);
+                range.deleteContents();
+                const span = document.createElement('span');
+                span.textContent = selection.toString();
+                range.insertNode(span);
+                term.element.style.userSelect = 'text';
+            }
         });
     </script>
 </body>
