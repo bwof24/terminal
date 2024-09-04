@@ -42,7 +42,6 @@
             width: 100%;
             height: 100%;
             user-select: text; /* Enable text selection */
-            -webkit-user-select: text; /* For Safari and other WebKit browsers */
         }
         ::-webkit-scrollbar {
             width: 10px;
@@ -76,7 +75,9 @@
             if (socket) {
                 socket.close();
             }
-            term?.dispose();
+            if (term) {
+                term.dispose();
+            }
             term = new Terminal({
                 cursorBlink: true,
                 fontFamily: 'monospace',
@@ -96,7 +97,7 @@
             fitAddon.fit();
 
             socket = new WebSocket(`ws://${window.location.host}`);
-
+            
             socket.onopen = () => {
                 console.log('WebSocket connection established');
                 socket.send(JSON.stringify({ type: 'session', sessionId }));
@@ -115,22 +116,6 @@
 
             window.addEventListener('resize', () => {
                 fitAddon.fit();
-            });
-
-            // Ensure proper touch handling on mobile devices
-            terminalContainer.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 1) {
-                    term.focus();
-                }
-            });
-
-            // Improve selection on mobile
-            terminalContainer.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 1) {
-                    term.element.style.userSelect = 'text';
-                    term.element.style.webkitUserSelect = 'text';
-                    term.element.style.pointerEvents = 'auto';
-                }
             });
         }
 
