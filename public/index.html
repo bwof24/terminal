@@ -9,151 +9,146 @@
         body, html {
             height: 100%;
             margin: 0;
-            display: flex;
-            flex-direction: column;
-            background-color: black;
-            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #222;
+            color: white;
         }
-        #controls {
+        #login-container, #terminal-container {
             display: flex;
             justify-content: center;
-            padding: 10px;
+            align-items: center;
+            height: 100%;
+            width: 100%;
+            position: absolute;
+        }
+        #login-container {
             background-color: #333;
-        }
-        button {
-            margin: 0 5px;
-            padding: 5px 10px;
-            color: white;
-            background-color: #555;
-            border: none;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #777;
+            padding: 20px;
+            border-radius: 5px;
+            width: 300px;
+            box-shadow: 0px 0px 10px 0px #000;
         }
         #terminal-container {
-            flex: 1;
-            display: flex;
+            display: none;
             background-color: black;
-            overflow: auto;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: none;
+            background: #444;
+            color: white;
+        }
+        input[type="submit"] {
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            background-color: #555;
+            color: white;
+            cursor: pointer;
+        }
+        input[type="submit"]:hover {
+            background-color: #666;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
         }
         .xterm {
             background-color: black;
             color: white;
             width: 100%;
             height: 100%;
-            user-select: text; /* Enable text selection */
-            -webkit-user-select: text; /* For Safari and other WebKit browsers */
-        }
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 10px;
-        }
-        ::-webkit-scrollbar-thumb {
-            background-color: #555;
+            user-select: text;
         }
     </style>
 </head>
 <body>
-    <div id="controls">
-        <button id="clear-btn">Clear</button>
-        <button id="save-btn">Save (Ctrl+S)</button>
-        <button id="exit-btn">Exit (Ctrl+X)</button>
-        <button id="copy-btn">Copy</button>
+    <div id="login-container">
+        <form id="login-form">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+            <input type="submit" value="Login">
+            <div class="error" id="error-msg" style="display:none;">Invalid credentials, please try again.</div>
+        </form>
     </div>
-    <div id="terminal-container"></div>
+
+    <div id="terminal-container">
+        <div id="terminal"></div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
+        const loginForm = document.getElementById('login-form');
+        const errorMsg = document.getElementById('error-msg');
+        const loginContainer = document.getElementById('login-container');
         const terminalContainer = document.getElementById('terminal-container');
-        const term = new Terminal({
-            cursorBlink: true,
-            fontFamily: 'monospace',
-            theme: {
-                background: 'black',
-                foreground: 'white'
-            },
-            scrollback: 1000,
-            disableStdin: false,
-            rendererType: 'canvas'
-        });
-        const fitAddon = new FitAddon.FitAddon();
-        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
-        term.loadAddon(fitAddon);
-        term.loadAddon(webLinksAddon);
-        term.open(terminalContainer);
-        fitAddon.fit();
 
-        const socket = new WebSocket(`ws://${window.location.host}`);
+        loginForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const formData = new FormData(loginForm);
+            const data = Object.fromEntries(formData.entries());
 
-        socket.onopen = () => {
-            console.log('WebSocket connection established');
-        };
+            const response = await fetch('/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
 
-        socket.onmessage = (event) => {
-            term.write(event.data);
-        };
-
-        term.onData((data) => {
-            socket.send(data);
-        });
-
-        window.addEventListener('resize', () => {
-            fitAddon.fit();
-        });
-
-        document.getElementById('clear-btn').addEventListener('click', () => {
-            term.clear();
-        });
-
-        document.getElementById('save-btn').addEventListener('click', () => {
-            socket.send('\x13'); // Send Ctrl+S
-        });
-
-        document.getElementById('exit-btn').addEventListener('click', () => {
-            socket.send('\x18'); // Send Ctrl+X
-        });
-
-        document.getElementById('copy-btn').addEventListener('click', () => {
-            navigator.clipboard.writeText(term.getSelection() || term.buffer.active.getLine(term.buffer.active.cursorY).translateToString());
-        });
-
-        // Add event listener to capture clicks on terminal text
-        term.element.addEventListener('click', (event) => {
-            const text = term.buffer.active.getLine(term.buffer.active.cursorY).translateToString();
-
-            if (text.includes('^X Exit')) {
-                socket.send('\x18'); // Ctrl+X
-            } else if (text.includes('^O Write Out')) {
-                socket.send('\x13'); // Ctrl+S
-            } else if (text.includes('^G Help')) {
-                socket.send('\x07'); // Ctrl+G
-            } else if (text.includes('^R Read File')) {
-                socket.send('\x12'); // Ctrl+R
-            } else if (text.includes('^W Where Is')) {
-                socket.send('\x17'); // Ctrl+W
-            } else if (text.includes('^K Cut')) {
-                socket.send('\x0B'); // Ctrl+K
-            } else if (text.includes('^U Paste')) {
-                socket.send('\x15'); // Ctrl+U
-            } else if (text.includes('^C Location')) {
-                socket.send('\x03'); // Ctrl+C
-            } else if (text.includes('M-U Undo')) {
-                socket.send('\x1B+u'); // Alt+U
-            } else if (text.includes('M-6 Copy')) {
-                socket.send('\x1B+6'); // Alt+6
-            } else if (text.includes('M-] To Bracket')) {
-                socket.send('\x1B+]'); // Alt+]
-            } else if (text.includes('M-Q Previous')) {
-                socket.send('\x1B+q'); // Alt+Q
-            } else if (text.includes('M-W Next')) {
-                socket.send('\x1B+w'); // Alt+W
-            } else if (text.includes('[ Read 79 lines ]')) {
-                // Handle specific text click
-                console.log('Clicked [ Read 79 lines ]');
+            if (response.ok) {
+                loginContainer.style.display = 'none';
+                terminalContainer.style.display = 'flex';
+                startTerminal();
+            } else {
+                errorMsg.style.display = 'block';
             }
         });
+
+        function startTerminal() {
+            const term = new Terminal({
+                cursorBlink: true,
+                fontFamily: 'monospace',
+                theme: {
+                    background: 'black',
+                    foreground: 'white'
+                },
+                scrollback: 1000,
+                disableStdin: false
+            });
+            const fitAddon = new FitAddon.FitAddon();
+            const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+            term.loadAddon(fitAddon);
+            term.loadAddon(webLinksAddon);
+            term.open(document.getElementById('terminal'));
+            fitAddon.fit();
+
+            const socket = new WebSocket(`ws://${window.location.host}`);
+
+            socket.onopen = () => {
+                console.log('WebSocket connection established');
+            };
+
+            socket.onmessage = (event) => {
+                term.write(event.data);
+            };
+
+            term.onData((data) => {
+                socket.send(data);
+            });
+
+            window.addEventListener('resize', () => {
+                fitAddon.fit();
+            });
+        }
     </script>
 </body>
 </html>
