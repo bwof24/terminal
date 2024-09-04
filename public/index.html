@@ -25,15 +25,23 @@
             background-color: black !important;
             color: white !important;
         }
+        /* Handle touch input improvements */
+        #input-field {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
     <div id="terminal-container"></div>
+    <!-- Hidden input field for capturing mobile typing -->
+    <textarea id="input-field"></textarea>
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script>
-        // Initialize the terminal
-        const terminal = new Terminal({
+        const term = new Terminal({
+            cursorBlink: true,
             fontFamily: 'monospace',
             theme: {
                 background: 'black',
@@ -41,42 +49,41 @@
             }
         });
         const fitAddon = new FitAddon.FitAddon();
-        terminal.loadAddon(fitAddon);
-        terminal.open(document.getElementById('terminal-container'));
+        term.loadAddon(fitAddon);
+        term.open(document.getElementById('terminal-container'));
         fitAddon.fit();
 
-        // Set up WebSocket connection
         const ws = new WebSocket(`ws://${window.location.host}`);
 
         ws.onmessage = (event) => {
-            terminal.write(event.data);
+            term.write(event.data);
         };
 
-        terminal.onData((data) => {
+        term.onData((data) => {
             ws.send(data);
         });
 
-        // Ensure that the terminal is resizeable and interactive on mobile
+        // Handle resize
         window.addEventListener('resize', () => {
             fitAddon.fit();
         });
 
-        document.addEventListener('touchstart', (event) => {
-            event.preventDefault(); // Prevent default touch behavior
-        }, { passive: false });
-
-        // Handle copy and paste for mobile
-        terminal.on('paste', (data) => {
-            ws.send(data);
+        // Handle typing on mobile by using a hidden input field
+        const inputField = document.getElementById('input-field');
+        inputField.addEventListener('input', (event) => {
+            term.write(inputField.value);
+            ws.send(inputField.value);
+            inputField.value = ''; // Clear the input field after sending data
         });
 
-        // Handle copy on desktop and mobile
-        terminal.on('selection', (data) => {
-            if (data) {
-                // Copy selection to clipboard on desktop
-                navigator.clipboard.writeText(data).then(() => {
-                    console.log('Copied to clipboard');
-                }).catch(err => {
+        document.getElementById('terminal-container').addEventListener('click', () => {
+            inputField.focus(); // Focus the hidden input field when terminal is clicked
+        });
+
+        term.onSelectionChange(() => {
+            const selection = term.getSelection();
+            if (selection) {
+                navigator.clipboard.writeText(selection).catch(err => {
                     console.error('Failed to copy text: ', err);
                 });
             }
