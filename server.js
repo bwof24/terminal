@@ -1,40 +1,64 @@
-const express = require('express');
-const http = require('http');
 const WebSocket = require('ws');
-const pty = require('node-pty');
-
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const express = require('express');
 const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const port = 3000;
 
+// Serve static files
 app.use(express.static('public'));
 
-wss.on('connection', (ws) => {
-    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+const wss = new WebSocket.Server({ noServer: true });
 
-    const ptyProcess = pty.spawn(shell, [], {
-        name: 'xterm-color',
-        cols: 80,
-        rows: 30,
-        cwd: process.env.HOME,
-        env: process.env
-    });
+wss.on('connection', ws => {
+    console.log('Client connected');
 
-    ptyProcess.on('data', (data) => {
-        ws.send(data);
-    });
+    ws.on('message', message => {
+        console.log(`Received message: ${message}`);
 
-    ws.on('message', (msg) => {
-        // Write each keypress directly to the terminal
-        ptyProcess.write(msg);
+        if (message.startsWith('echo ')) {
+            const [ , content ] = message.split('> ');
+            const fileName = content.split('\n')[0];
+            const fileContent = content.substring(fileName.length + 1);
+            fs.writeFile(path.join(__dirname, fileName), fileContent, err => {
+                if (err) {
+                    ws.send('Error writing file\n');
+                } else {
+                    ws.send('File written successfully\n');
+                }
+            });
+        } else if (message.startsWith('cat ')) {
+            const fileName = message.split(' ')[1];
+            fs.readFile(path.join(__dirname, fileName), 'utf8', (err, data) => {
+                if (err) {
+                    ws.send('Error reading file\n');
+                } else {
+                    ws.send(data);
+                }
+            });
+        } else {
+            exec(message, (error, stdout, stderr) => {
+                if (error) {
+                    ws.send(`Error: ${stderr}\n`);
+                } else {
+                    ws.send(stdout);
+                }
+            });
+        }
     });
 
     ws.on('close', () => {
-        ptyProcess.kill();
+        console.log('Client disconnected');
     });
 });
 
-const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
+const server = app.listen(port, () => {
+    console.log(`Server is listening on port ${port}`);
+});
+
+server.on('upgrade', (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, ws => {
+        wss.emit('connection', ws, request);
+    });
 });
