@@ -44,7 +44,6 @@
             user-select: text; /* Enable text selection */
             -webkit-user-select: text; /* For Safari and other WebKit browsers */
         }
-        /* Custom scrollbar */
         ::-webkit-scrollbar {
             width: 10px;
         }
@@ -59,6 +58,7 @@
         <button id="clear-terminal">Clear</button>
         <input type="file" id="upload" style="display:none;">
         <button id="upload-button">Upload</button>
+        <input type="text" id="download-filename" placeholder="Filename to Download">
         <button id="download-button">Download</button>
     </div>
     <div id="terminal-container"></div>
@@ -133,28 +133,26 @@
         document.getElementById('upload').addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const data = reader.result;
-                    const command = `echo "${data.replace(/"/g, '\\"')}" > ${file.name}\n`;
-                    socket.send(JSON.stringify({ type: 'command', data: command }));
-                };
-                reader.readAsText(file);
+                const formData = new FormData();
+                formData.append('file', file);
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('File uploaded successfully:', data.filePath);
+                })
+                .catch(error => {
+                    console.error('Error uploading file:', error);
+                });
             }
         });
 
         document.getElementById('download-button').addEventListener('click', () => {
-            const filename = prompt("Enter filename to download:");
+            const filename = document.getElementById('download-filename').value;
             if (filename) {
-                socket.send(JSON.stringify({ type: 'command', data: `cat ${filename}` }));
-                socket.onmessage = (event) => {
-                    const blob = new Blob([event.data], { type: 'text/plain' });
-                    const link = document.createElement('a');
-                    link.href = window.URL.createObjectURL(blob);
-                    link.download = filename;
-                    link.click();
-                    link.remove();
-                };
+                window.location.href = `/download/${filename}`;
             }
         });
 
