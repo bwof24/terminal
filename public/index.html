@@ -74,35 +74,22 @@
         term.open(document.getElementById('terminal-container'));
         fitAddon.fit();
 
-        // Set up WebSocket connection
         const socket = new WebSocket(`ws://${window.location.host}`);
 
-        // Handle WebSocket connection and messages
         socket.onopen = () => console.log('WebSocket connection established');
         socket.onmessage = (event) => term.write(event.data);
         term.onData((data) => socket.send(data));
 
-        // Button to clear terminal screen
         document.getElementById('clear-btn').addEventListener('click', () => term.clear());
-
-        // Button to send Ctrl+S (Save)
-        document.getElementById('save-btn').addEventListener('click', () => socket.send('\x13')); // Ctrl+S
-
-        // Button to send Ctrl+X (Exit)
-        document.getElementById('exit-btn').addEventListener('click', () => socket.send('\x18')); // Ctrl+X
-
-        // Button to send Ctrl+C (Cancel)
-        document.getElementById('cancel-btn').addEventListener('click', () => socket.send('\x03')); // Ctrl+C
-
-        // Button to navigate back (cd ..)
+        document.getElementById('save-btn').addEventListener('click', () => socket.send('\x13'));
+        document.getElementById('exit-btn').addEventListener('click', () => socket.send('\x18'));
+        document.getElementById('cancel-btn').addEventListener('click', () => socket.send('\x03'));
         document.getElementById('back-btn').addEventListener('click', () => socket.send('cd ..\r'));
 
-        // Button to open a new terminal session in a new tab
         document.getElementById('session-btn').addEventListener('click', () => {
             window.open('/', '_blank');
         });
 
-        // Automatically resize the terminal on window resize
         window.addEventListener('resize', () => fitAddon.fit());
 
         // File upload functionality
@@ -113,13 +100,32 @@
 
             fetch('/upload', { method: 'POST', body: formData })
                 .then(response => response.text())
-                .then(data => console.log(data));
+                .then(data => alert(data))
+                .catch(err => alert('Error uploading file: ' + err));
         });
 
         // File download functionality
         document.getElementById('download-btn').addEventListener('click', () => {
             const filename = prompt('Enter the filename to download from $HOME:');
-            window.location.href = `/download/${filename}`;
+            if (filename) {
+                fetch(`/download/${filename}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('File not found');
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    })
+                    .catch(err => alert('Error downloading file: ' + err.message));
+            }
         });
     </script>
 </body>
