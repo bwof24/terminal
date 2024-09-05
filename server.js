@@ -11,7 +11,7 @@ const wss = new WebSocket.Server({ server });
 app.use(express.static('public'));
 
 // Authentication middleware using PAM
-async function pamAuthenticate(username, password) {
+function pamAuthenticate(username, password) {
     return new Promise((resolve, reject) => {
         pam.authenticate(username, password, (err) => {
             if (err) {
@@ -31,19 +31,13 @@ wss.on('connection', (ws) => {
 
     ws.on('message', async (msg) => {
         if (!isAuthenticated) {
-            let data;
-            if (Buffer.isBuffer(msg)) {
-                data = msg.toString(); // Convert buffer to string
-            } else {
-                data = msg; // Already a string
-            }
+            const [type, data] = msg.split(':');
 
-            const [type, value] = data.split(':');
             if (type === 'username') {
-                username = value.trim();
+                username = data.trim();
                 ws.send('Password:'); // Ask for the password next
             } else if (type === 'password') {
-                password = value.trim();
+                password = data.trim();
 
                 try {
                     await pamAuthenticate(username, password);
@@ -62,35 +56,24 @@ wss.on('connection', (ws) => {
                     });
 
                     ptyProcess.on('data', (data) => {
-                        if (ws.readyState === WebSocket.OPEN) {
-                            ws.send(data);
-                        }
+                        ws.send(data);
                     });
 
                     ws.on('message', (msg) => {
-                        if (isAuthenticated && ws.readyState === WebSocket.OPEN) {
-                            if (Buffer.isBuffer(msg)) {
-                                ptyProcess.write(msg.toString());
-                            } else {
-                                ptyProcess.write(msg);
-                            }
+                        if (isAuthenticated) {
+                            ptyProcess.write(msg);
                         }
                     });
 
                     ws.on('close', () => {
                         ptyProcess.kill();
                     });
-
                 } catch (err) {
                     ws.send('Authentication failed. Please try again.');
                     ws.close();
                 }
             }
         }
-    });
-
-    ws.on('error', (err) => {
-        console.error('WebSocket error:', err);
     });
 
     ws.on('close', () => {
