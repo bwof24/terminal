@@ -25,6 +25,7 @@
             color: white;
             width: 100%;
             height: 100%;
+            user-select: text;
         }
         #controls {
             display: flex;
@@ -48,17 +49,16 @@
 <body>
     <div id="controls">
         <button id="clear-btn">Clear</button>
-        <button id="cancel-btn">Cancel (Ctrl+C)</button>
-        <button id="back-btn">Back (cd ..)</button>
-        <button id="new-session-btn">New Session</button>
+        <button id="cancel-btn">Cancel</button>
+        <button id="back-btn">Back</button>
+        <button id="session-btn">New Session</button>
+        <input type="file" id="file-upload" />
         <button id="upload-btn">Upload</button>
         <button id="download-btn">Download</button>
     </div>
     <div id="terminal-container"></div>
-    
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
         const terminalContainer = document.getElementById('terminal-container');
         const term = new Terminal({
@@ -100,35 +100,39 @@
         });
 
         document.getElementById('cancel-btn').addEventListener('click', () => {
-            socket.send('\x03'); // Send Ctrl+C
+            socket.send('\x03'); // Ctrl+C
         });
 
         document.getElementById('back-btn').addEventListener('click', () => {
             socket.send('cd ..\n');
         });
 
-        document.getElementById('new-session-btn').addEventListener('click', () => {
-            location.reload(); // Reload the page to start a new session
+        document.getElementById('session-btn').addEventListener('click', () => {
+            location.reload(); // Reload page to start a new session
         });
 
+        // Handle file upload
         document.getElementById('upload-btn').addEventListener('click', () => {
-            const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.onchange = () => {
-                const file = fileInput.files[0];
+            const fileInput = document.getElementById('file-upload');
+            const file = fileInput.files[0];
+            if (file) {
                 const formData = new FormData();
                 formData.append('file', file);
-                fetch('/upload', { method: 'POST', body: formData })
-                    .then(response => response.text())
-                    .then(alert);
-            };
-            fileInput.click();
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                }).then(response => response.json())
+                .then(result => {
+                    console.log(result.message);
+                });
+            }
         });
 
+        // Handle file download
         document.getElementById('download-btn').addEventListener('click', () => {
-            const fileName = prompt('Enter file name to download:');
-            if (fileName) {
-                window.location.href = `/download/${fileName}`;
+            const filename = prompt('Enter filename to download:');
+            if (filename) {
+                window.open(`/download/${filename}`);
             }
         });
     </script>
