@@ -1,28 +1,30 @@
 {
   "name": "web-terminal",
-  "version": "1.0.0",
-  "description": "A fully-featured web-based terminal with SSH support and file management.",
+  "description": "A web-based terminal using Node.js, Express, WebSockets, and xterm.js",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "",
-    "express-session": "",
-    "multer": "",
-    "node-pty": "",
+    "http": "",
     "ws": "",
-    "express-rate-limit": "",
-    "body-parser": "",
-    "fs-extra": ""
-  },
-  "devDependencies": {
-    "nodemon": ""
+    "node-pty": "",
+    "multer": "",
+    "mime-types": "",
+    "path": "",
+    "fs": ""
   },
   "engines": {
     "node": ">=14.0.0"
   },
-  "author": "Your Name",
+  "keywords": [
+    "terminal",
+    "websocket",
+    "nodejs",
+    "express",
+    "xterm"
+  ],
+  "author": "",
   "license": "MIT"
 }
