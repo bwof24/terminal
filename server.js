@@ -5,7 +5,6 @@ const pty = require('node-pty');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const mime = require('mime-types');
 
 const app = express();
 const server = http.createServer(app);
@@ -19,10 +18,10 @@ const upload = multer({
     dest: process.env.HOME
 });
 
-// WebSocket setup for terminal interaction
 wss.on('connection', (ws) => {
     const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
 
+    // Start a new pty process (terminal session)
     const ptyProcess = pty.spawn(shell, [], {
         name: 'xterm-color',
         cols: 80,
@@ -31,10 +30,12 @@ wss.on('connection', (ws) => {
         env: process.env
     });
 
+    // Send data from pty process to the WebSocket (client)
     ptyProcess.on('data', (data) => {
         ws.send(data);
     });
 
+    // Send data from WebSocket (client) to the pty process
     ws.on('message', (msg) => {
         ptyProcess.write(msg);
     });
@@ -44,31 +45,18 @@ wss.on('connection', (ws) => {
     });
 });
 
-// Handle file downloads from the $HOME directory
+// Endpoint to handle file downloads
 app.get('/download/:filename', (req, res) => {
     const filePath = path.join(process.env.HOME, req.params.filename);
-    
-    // Check if the file exists before attempting to download
-    fs.access(filePath, fs.constants.F_OK, (err) => {
+    res.download(filePath, req.params.filename, (err) => {
         if (err) {
+            console.error(err);
             res.status(404).send('File not found');
-            return;
         }
-
-        // Get the MIME type of the file
-        const mimeType = mime.lookup(filePath) || 'application/octet-stream';
-
-        // Set appropriate headers to handle download
-        res.setHeader('Content-Disposition', `attachment; filename="${req.params.filename}"`);
-        res.setHeader('Content-Type', mimeType);
-        
-        // Stream the file content to the client
-        const fileStream = fs.createReadStream(filePath);
-        fileStream.pipe(res);
     });
 });
 
-// Handle file uploads to the $HOME directory
+// Endpoint to handle file uploads
 app.post('/upload', upload.single('file'), (req, res) => {
     const oldPath = req.file.path;
     const newPath = path.join(process.env.HOME, req.file.originalname);
