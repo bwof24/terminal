@@ -2,79 +2,87 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const pty = require('node-pty');
-const { exec } = require('child_process');
+const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const multer = require('multer');
-const upload = multer({ dest: 'uploads/' });
+const multer = require('multer'); // For file upload
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 app.use(express.static('public'));
-app.use(express.json());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// Serve static files (like HTML, CSS, JS)
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// Multer setup for handling file uploads
+const upload = multer({ dest: 'uploads/' });
 
-// Authenticate user
-app.post('/authenticate', (req, res) => {
-    const { username, password } = req.body;
-    exec(`echo ${password} | su -c "id -u ${username}"`, (err, stdout, stderr) => {
-        if (err || stderr) {
-            res.status(401).send('Authentication failed!');
+// Authentication middleware for checking credentials
+let authenticatedUsers = {}; // Track authenticated users
+
+// WebSocket connection handling
+wss.on('connection', (ws) => {
+    let authenticated = false;
+    let username = '';
+    
+    ws.send('Authentication required!\nEnter username: ');
+
+    ws.on('message', (msg) => {
+        if (!authenticated) {
+            const input = msg.trim();
+            if (!username) {
+                // First step: asking for username
+                username = input;
+                ws.send(`Password for ${username}: `);
+            } else {
+                // Second step: checking password
+                const password = input;
+                
+                // Attempt to spawn a shell using the given username/password
+                const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+                const ptyProcess = pty.spawn(shell, [], {
+                    name: 'xterm-color',
+                    cols: 80,
+                    rows: 30,
+                    cwd: process.env.HOME,
+                    env: { ...process.env, USER: username }
+                });
+
+                ptyProcess.write(`${username}\n${password}\n`);
+
+                authenticatedUsers[ws] = ptyProcess;
+
+                ptyProcess.on('data', (data) => {
+                    ws.send(data);
+                });
+
+                ws.send('Connection successful.\n');
+                authenticated = true;
+            }
         } else {
-            res.status(200).send('Connection successful!');
+            // Handle terminal commands after authentication
+            authenticatedUsers[ws].write(msg);
+        }
+    });
+
+    ws.on('close', () => {
+        if (authenticatedUsers[ws]) {
+            authenticatedUsers[ws].kill();
+            delete authenticatedUsers[ws];
         }
     });
 });
 
-wss.on('connection', (ws, req) => {
-    let shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
-
-    const ptyProcess = pty.spawn(shell, [], {
-        name: 'xterm-color',
-        cols: 80,
-        rows: 30,
-        cwd: process.env.HOME,
-        env: process.env
-    });
-
-    ptyProcess.on('data', (data) => {
-        ws.send(data);
-    });
-
-    ws.on('message', (msg) => {
-        ptyProcess.write(msg);
-    });
-
-    ws.on('close', () => {
-        ptyProcess.kill();
-    });
-});
-
-// Upload file
+// File upload endpoint
 app.post('/upload', upload.single('file'), (req, res) => {
-    const tempPath = req.file.path;
-    const targetPath = path.join(__dirname, 'uploads', req.file.originalname);
-
-    fs.rename(tempPath, targetPath, err => {
-        if (err) return res.status(500).send('Upload failed!');
-        res.status(200).send('Upload successful!');
-    });
+    res.send({ message: 'File uploaded successfully!' });
 });
 
-// Download file
-app.get('/download/:fileName', (req, res) => {
-    const fileName = req.params.fileName;
-    const filePath = path.join(__dirname, 'uploads', fileName);
-    res.download(filePath, err => {
-        if (err) res.status(500).send('Download failed!');
-    });
+// File download endpoint
+app.get('/download/:filename', (req, res) => {
+    const file = path.join(__dirname, 'uploads', req.params.filename);
+    res.download(file);
 });
 
 const PORT = process.env.PORT || 8080;
