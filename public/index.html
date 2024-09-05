@@ -28,7 +28,7 @@
             user-select: text; /* Enable text selection */
             -webkit-user-select: text; /* For Safari and other WebKit browsers */
         }
-        #controls {
+        #controls, #login-form {
             display: flex;
             justify-content: center;
             padding: 10px;
@@ -45,6 +45,17 @@
         button:hover {
             background-color: #777;
         }
+        input {
+            margin: 0 5px;
+            padding: 5px;
+            color: black;
+            border: none;
+            border-radius: 3px;
+        }
+        #login-form {
+            flex-direction: column;
+        }
+        /* Custom scrollbar */
         ::-webkit-scrollbar {
             width: 10px;
         }
@@ -54,21 +65,25 @@
     </style>
 </head>
 <body>
-    <div id="controls">
-        <button id="clear-btn">Clear</button>
-        <button id="cancel-btn">Cancel</button>
-        <button id="back-btn">Back</button>
-        <button id="session-btn">New Session</button>
-        <button id="upload-btn">Upload</button>
-        <button id="download-btn">Download</button>
-        <button id="edit-btn">Edit</button>
+    <div id="login-form">
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button id="login-btn">Login</button>
     </div>
-    <div id="terminal-container"></div>
+    <div id="controls" style="display: none;">
+        <button id="clear-btn">Clear</button>
+        <button id="save-btn">Save</button>
+        <button id="exit-btn">Exit</button>
+        <button id="copy-btn">Copy</button>
+    </div>
+    <div id="terminal-container" style="display: none;"></div>
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
         const terminalContainer = document.getElementById('terminal-container');
+        const loginForm = document.getElementById('login-form');
+        const controls = document.getElementById('controls');
         const term = new Terminal({
             cursorBlink: true,
             fontFamily: 'monospace',
@@ -84,8 +99,6 @@
         const webLinksAddon = new WebLinksAddon.WebLinksAddon();
         term.loadAddon(fitAddon);
         term.loadAddon(webLinksAddon);
-        term.open(terminalContainer);
-        fitAddon.fit();
 
         const socket = new WebSocket(`ws://${window.location.host}`);
 
@@ -94,8 +107,25 @@
         };
 
         socket.onmessage = (event) => {
-            term.write(event.data);
+            const message = event.data;
+            if (message.startsWith('Please authenticate')) {
+                loginForm.style.display = 'flex';
+                controls.style.display = 'none';
+                terminalContainer.style.display = 'none';
+            } else {
+                term.write(message);
+                loginForm.style.display = 'none';
+                controls.style.display = 'flex';
+                terminalContainer.style.display = 'flex';
+            }
         };
+
+        document.getElementById('login-btn').addEventListener('click', () => {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            socket.send(`username:${username}`);
+            socket.send(`password:${password}`);
+        });
 
         term.onData((data) => {
             socket.send(data);
@@ -109,28 +139,16 @@
             term.clear();
         });
 
-        document.getElementById('cancel-btn').addEventListener('click', () => {
-            socket.send('\x03'); // Send Ctrl+C
+        document.getElementById('save-btn').addEventListener('click', () => {
+            socket.send('\x13'); // Send Ctrl+S
         });
 
-        document.getElementById('back-btn').addEventListener('click', () => {
-            socket.send('cd ..\r');
+        document.getElementById('exit-btn').addEventListener('click', () => {
+            socket.send('\x18'); // Send Ctrl+X
         });
 
-        document.getElementById('session-btn').addEventListener('click', () => {
-            socket.send('new_session');
-        });
-
-        document.getElementById('upload-btn').addEventListener('click', () => {
-            // Implement file upload logic here
-        });
-
-        document.getElementById('download-btn').addEventListener('click', () => {
-            // Implement file download logic here
-        });
-
-        document.getElementById('edit-btn').addEventListener('click', () => {
-            socket.send('edit');
+        document.getElementById('copy-btn').addEventListener('click', () => {
+            navigator.clipboard.writeText(term.getSelection() || term.buffer.active.getLine(term.buffer.active.cursorY).translateToString());
         });
     </script>
 </body>
