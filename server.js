@@ -10,12 +10,12 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static('public'));
 
-// Authentication middleware using PAM
+// PAM Authentication
 function pamAuthenticate(username, password) {
     return new Promise((resolve, reject) => {
         pam.authenticate(username, password, (err) => {
             if (err) {
-                reject(new Error('Authentication failed'));
+                reject(new Error('Authentication failed: ' + err.message));
             } else {
                 resolve(true);
             }
@@ -30,48 +30,56 @@ wss.on('connection', (ws) => {
     let username, password;
 
     ws.on('message', async (msg) => {
+        // Log the type and value of msg for debugging
+        console.log('Received message:', msg);
+        console.log('Type of msg:', typeof msg);
+
         if (!isAuthenticated) {
-            const [type, data] = msg.split(':');
+            if (typeof msg === 'string') {
+                const [type, data] = msg.split(':');
+                
+                if (type === 'username') {
+                    username = data.trim();
+                    ws.send('Password:'); // Ask for the password next
+                } else if (type === 'password') {
+                    password = data.trim();
 
-            if (type === 'username') {
-                username = data.trim();
-                ws.send('Password:'); // Ask for the password next
-            } else if (type === 'password') {
-                password = data.trim();
+                    try {
+                        await pamAuthenticate(username, password);
+                        isAuthenticated = true;
+                        ws.send('Authentication successful. Starting terminal...');
 
-                try {
-                    await pamAuthenticate(username, password);
-                    isAuthenticated = true;
-                    ws.send('Authentication successful. Starting terminal...');
+                        // Start the PTY after successful authentication
+                        const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
 
-                    // Start the PTY after successful authentication
-                    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+                        const ptyProcess = pty.spawn(shell, [], {
+                            name: 'xterm-color',
+                            cols: 80,
+                            rows: 30,
+                            cwd: process.env.HOME,
+                            env: process.env
+                        });
 
-                    const ptyProcess = pty.spawn(shell, [], {
-                        name: 'xterm-color',
-                        cols: 80,
-                        rows: 30,
-                        cwd: process.env.HOME,
-                        env: process.env
-                    });
+                        ptyProcess.on('data', (data) => {
+                            ws.send(data);
+                        });
 
-                    ptyProcess.on('data', (data) => {
-                        ws.send(data);
-                    });
+                        ws.on('message', (msg) => {
+                            if (isAuthenticated) {
+                                ptyProcess.write(msg);
+                            }
+                        });
 
-                    ws.on('message', (msg) => {
-                        if (isAuthenticated) {
-                            ptyProcess.write(msg);
-                        }
-                    });
-
-                    ws.on('close', () => {
-                        ptyProcess.kill();
-                    });
-                } catch (err) {
-                    ws.send('Authentication failed. Please try again.');
-                    ws.close();
+                        ws.on('close', () => {
+                            ptyProcess.kill();
+                        });
+                    } catch (err) {
+                        ws.send('Authentication failed. Please try again.');
+                        ws.close();
+                    }
                 }
+            } else {
+                ws.send('Invalid message format. Expected a string.');
             }
         }
     });
