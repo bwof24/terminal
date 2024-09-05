@@ -5,7 +5,8 @@ const pty = require('node-pty');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
-const multer = require('multer'); // For file upload
+const multer = require('multer');
+const { exec } = require('child_process');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,10 +19,20 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Multer setup for handling file uploads
 const upload = multer({ dest: 'uploads/' });
 
-// Authentication middleware for checking credentials
-let authenticatedUsers = {}; // Track authenticated users
+// Helper function to check if a user exists
+function userExists(username, callback) {
+    exec(`getent passwd ${username}`, (error, stdout) => {
+        if (error) {
+            callback(false);
+        } else {
+            callback(!!stdout);
+        }
+    });
+}
 
-// WebSocket connection handling
+// Authentication middleware for checking credentials
+let authenticatedUsers = {};
+
 wss.on('connection', (ws) => {
     let authenticated = false;
     let username = '';
@@ -29,40 +40,51 @@ wss.on('connection', (ws) => {
     ws.send('Authentication required!\nEnter username: ');
 
     ws.on('message', (msg) => {
-        const message = msg.toString(); // Convert message to string
+        const message = msg.toString();
         if (!authenticated) {
-            const input = message.trim(); // Use trim safely now
+            const input = message.trim();
             if (!username) {
                 // First step: asking for username
                 username = input;
-                ws.send(`Password for ${username}: `);
+                userExists(username, (exists) => {
+                    if (exists) {
+                        ws.send(`Password for ${username}: `);
+                    } else {
+                        ws.send('Username not found.\n');
+                        ws.close(); // Close connection if username is invalid
+                    }
+                });
             } else {
-                // Second step: checking password
+                // Second step: checking password (mock check)
                 const password = input;
                 
-                // Attempt to spawn a shell using the given username/password
-                const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
-                const ptyProcess = pty.spawn(shell, [], {
-                    name: 'xterm-color',
-                    cols: 80,
-                    rows: 30,
-                    cwd: process.env.HOME,
-                    env: { ...process.env, USER: username }
-                });
+                // For real systems, integrate with PAM or another secure authentication service
+                if (true) { // Replace this condition with actual password check
+                    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+                    const ptyProcess = pty.spawn(shell, [], {
+                        name: 'xterm-color',
+                        cols: 80,
+                        rows: 30,
+                        cwd: process.env.HOME,
+                        env: { ...process.env, USER: username }
+                    });
 
-                ptyProcess.write(`${username}\n${password}\n`);
+                    ptyProcess.write(`${username}\n${password}\n`);
 
-                authenticatedUsers[ws] = ptyProcess;
+                    authenticatedUsers[ws] = ptyProcess;
 
-                ptyProcess.on('data', (data) => {
-                    ws.send(data);
-                });
+                    ptyProcess.on('data', (data) => {
+                        ws.send(data);
+                    });
 
-                ws.send('Connection successful.\n');
-                authenticated = true;
+                    ws.send('Connection successful.\n');
+                    authenticated = true;
+                } else {
+                    ws.send('Invalid password.\n');
+                    ws.close(); // Close connection if password is invalid
+                }
             }
         } else {
-            // Handle terminal commands after authentication
             authenticatedUsers[ws].write(message);
         }
     });
