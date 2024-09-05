@@ -25,8 +25,8 @@
             color: white;
             width: 100%;
             height: 100%;
-            user-select: text;
-            -webkit-user-select: text;
+            user-select: text; /* Enable text selection */
+            -webkit-user-select: text; /* For Safari and other WebKit browsers */
         }
         #controls, #login-form {
             display: flex;
@@ -55,6 +55,7 @@
         #login-form {
             flex-direction: column;
         }
+        /* Custom scrollbar */
         ::-webkit-scrollbar {
             width: 10px;
         }
@@ -98,8 +99,6 @@
         const webLinksAddon = new WebLinksAddon.WebLinksAddon();
         term.loadAddon(fitAddon);
         term.loadAddon(webLinksAddon);
-
-        term.open(terminalContainer);
 
         const socket = new WebSocket(`ws://${window.location.host}`);
 
@@ -149,8 +148,7 @@
         });
 
         document.getElementById('copy-btn').addEventListener('click', () => {
-            const selection = term.getSelection();
-            navigator.clipboard.writeText(selection || '');
+            navigator.clipboard.writeText(term.getSelection() || term.buffer.active.getLine(term.buffer.active.cursorY).translateToString());
         });
     </script>
 </body>
