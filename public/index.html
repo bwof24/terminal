@@ -14,19 +14,25 @@
             background-color: black;
             overflow: hidden;
         }
-        #header {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px;
-            background-color: #333;
-        }
-        #controls {
-            display: flex;
-        }
         #terminal-container {
             flex: 1;
             display: flex;
             background-color: black;
+            overflow: auto;
+        }
+        .xterm {
+            background-color: black;
+            color: white;
+            width: 100%;
+            height: 100%;
+            user-select: text; /* Enable text selection */
+            -webkit-user-select: text; /* For Safari and other WebKit browsers */
+        }
+        #controls, #login-form {
+            display: flex;
+            justify-content: center;
+            padding: 10px;
+            background-color: #333;
         }
         button {
             margin: 0 5px;
@@ -39,71 +45,110 @@
         button:hover {
             background-color: #777;
         }
+        input {
+            margin: 0 5px;
+            padding: 5px;
+            color: black;
+            border: none;
+            border-radius: 3px;
+        }
+        #login-form {
+            flex-direction: column;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #555;
+        }
     </style>
 </head>
 <body>
-    <!-- Header with buttons -->
-    <div id="header">
-        <div id="controls">
-            <button id="clear-btn">Clear</button>
-            <button id="cancel-btn">Cancel</button>
-            <button id="back-btn">Back</button>
-            <button id="session-btn">New Session</button>
-            <button id="upload-btn">Upload</button>
-            <button id="download-btn">Download</button>
-        </div>
+    <div id="login-form">
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button id="login-btn">Login</button>
     </div>
-
-    <!-- Terminal container -->
-    <div id="terminal-container"></div>
-
-    <!-- File input for upload -->
-    <input type="file" id="file-input" style="display:none;" />
-
+    <div id="controls" style="display: none;">
+        <button id="clear-btn">Clear</button>
+        <button id="save-btn">Save</button>
+        <button id="exit-btn">Exit</button>
+        <button id="copy-btn">Copy</button>
+    </div>
+    <div id="terminal-container" style="display: none;"></div>
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links/lib/xterm-addon-web-links.js"></script>
     <script>
-        const term = new Terminal({ cursorBlink: true, theme: { background: 'black', foreground: 'white' } });
+        const terminalContainer = document.getElementById('terminal-container');
+        const loginForm = document.getElementById('login-form');
+        const controls = document.getElementById('controls');
+        const term = new Terminal({
+            cursorBlink: true,
+            fontFamily: 'monospace',
+            theme: {
+                background: 'black',
+                foreground: 'white'
+            },
+            scrollback: 1000,
+            disableStdin: false,
+            rendererType: 'canvas'
+        });
         const fitAddon = new FitAddon.FitAddon();
+        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
         term.loadAddon(fitAddon);
-        term.open(document.getElementById('terminal-container'));
-        fitAddon.fit();
+        term.loadAddon(webLinksAddon);
 
         const socket = new WebSocket(`ws://${window.location.host}`);
-        socket.onmessage = (event) => term.write(event.data);
-        term.onData(data => socket.send(data));
 
-        window.addEventListener('resize', () => fitAddon.fit());
+        socket.onopen = () => {
+            console.log('WebSocket connection established');
+        };
 
-        // Button events
-        document.getElementById('clear-btn').addEventListener('click', () => term.clear());
-        document.getElementById('cancel-btn').addEventListener('click', () => socket.send('\x03'));  // Ctrl+C
-        document.getElementById('back-btn').addEventListener('click', () => socket.send('cd ..\r'));
-        document.getElementById('session-btn').addEventListener('click', () => location.reload()); // New session
-
-        document.getElementById('upload-btn').addEventListener('click', () => {
-            document.getElementById('file-input').click();
-        });
-
-        document.getElementById('file-input').addEventListener('change', () => {
-            const file = document.getElementById('file-input').files[0];
-            const formData = new FormData();
-            formData.append('file', file);
-
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            }).then(response => response.text())
-            .then(result => console.log(result))
-            .catch(error => console.error('Error:', error));
-        });
-
-        document.getElementById('download-btn').addEventListener('click', () => {
-            const filename = prompt("Enter the filename to download:");
-            if (filename) {
-                window.location.href = `/download/${filename}`;
+        socket.onmessage = (event) => {
+            const message = event.data;
+            if (message.startsWith('Please authenticate')) {
+                loginForm.style.display = 'flex';
+                controls.style.display = 'none';
+                terminalContainer.style.display = 'none';
+            } else {
+                term.write(message);
+                loginForm.style.display = 'none';
+                controls.style.display = 'flex';
+                terminalContainer.style.display = 'flex';
             }
+        };
+
+        document.getElementById('login-btn').addEventListener('click', () => {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            socket.send(`username:${username}`);
+            socket.send(`password:${password}`);
+        });
+
+        term.onData((data) => {
+            socket.send(data);
+        });
+
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+        });
+
+        document.getElementById('clear-btn').addEventListener('click', () => {
+            term.clear();
+        });
+
+        document.getElementById('save-btn').addEventListener('click', () => {
+            socket.send('\x13'); // Send Ctrl+S
+        });
+
+        document.getElementById('exit-btn').addEventListener('click', () => {
+            socket.send('\x18'); // Send Ctrl+X
+        });
+
+        document.getElementById('copy-btn').addEventListener('click', () => {
+            navigator.clipboard.writeText(term.getSelection() || term.buffer.active.getLine(term.buffer.active.cursorY).translateToString());
         });
     </script>
 </body>
