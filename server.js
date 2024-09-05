@@ -71,7 +71,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
     });
 });
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 9999;
 server.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
 });
