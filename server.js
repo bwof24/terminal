@@ -44,7 +44,7 @@ wss.on('connection', (ws) => {
                     isAuthenticated = true;
                     ws.send('Authentication successful. Starting terminal...');
 
-                    // Start the PTY after successful authentication
+                    // If authentication is successful, start the PTY
                     const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
 
                     const ptyProcess = pty.spawn(shell, [], {
@@ -61,6 +61,7 @@ wss.on('connection', (ws) => {
 
                     ws.on('message', (msg) => {
                         if (isAuthenticated) {
+                            // Write each keypress directly to the terminal
                             ptyProcess.write(msg);
                         }
                     });
