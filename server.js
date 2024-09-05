@@ -2,113 +2,85 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const pty = require('node-pty');
-const bodyParser = require('body-parser');
-const fs = require('fs');
 const path = require('path');
-const multer = require('multer');
-const { exec } = require('child_process');
+const session = require('express-session');
+const pam = require('authenticate-pam');
+const fileUpload = require('express-fileupload');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(express.static('public'));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// Middleware for file upload and session handling
+app.use(fileUpload());
+app.use(session({
+    secret: 'your_secret_key',
+    resave: false,
+    saveUninitialized: true,
+}));
 
-// Multer setup for handling file uploads
-const upload = multer({ dest: 'uploads/' });
+// Serve the frontend
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Helper function to check if a user exists
-function userExists(username, callback) {
-    exec(`getent passwd ${username}`, (error, stdout) => {
-        if (error) {
-            callback(false);
+// Authentication
+app.use(express.urlencoded({ extended: false }));
+app.post('/login', (req, res) => {
+    const { username, password } = req.body;
+    pam.authenticate(username, password, (err) => {
+        if (err) {
+            res.status(401).send('Authentication failed');
         } else {
-            callback(!!stdout);
-        }
-    });
-}
-
-// Authentication middleware for checking credentials
-let authenticatedUsers = {};
-
-wss.on('connection', (ws) => {
-    let authenticated = false;
-    let username = '';
-
-    ws.send('Authentication required!\nEnter username: ');
-
-    ws.on('message', (msg) => {
-        const message = msg.toString();
-        if (!authenticated) {
-            const input = message.trim();
-            if (!username) {
-                // First step: asking for username
-                username = input;
-                userExists(username, (exists) => {
-                    if (exists) {
-                        ws.send(`Password for ${username}: `);
-                    } else {
-                        ws.send('Username not found.\n');
-                        ws.close(); // Close connection if username is invalid
-                    }
-                });
-            } else {
-                // Second step: checking password (mock check)
-                const password = input;
-                
-                // For real systems, integrate with PAM or another secure authentication service
-                if (true) { // Replace this condition with actual password check
-                    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
-                    const ptyProcess = pty.spawn(shell, [], {
-                        name: 'xterm-color',
-                        cols: 80,
-                        rows: 30,
-                        cwd: process.env.HOME,
-                        env: { ...process.env, USER: username }
-                    });
-
-                    ptyProcess.write(`${username}\n${password}\n`);
-
-                    authenticatedUsers[ws] = ptyProcess;
-
-                    ptyProcess.on('data', (data) => {
-                        ws.send(data);
-                    });
-
-                    ws.send('Connection successful.\n');
-                    authenticated = true;
-                } else {
-                    ws.send('Invalid password.\n');
-                    ws.close(); // Close connection if password is invalid
-                }
-            }
-        } else {
-            authenticatedUsers[ws].write(message);
-        }
-    });
-
-    ws.on('close', () => {
-        if (authenticatedUsers[ws]) {
-            authenticatedUsers[ws].kill();
-            delete authenticatedUsers[ws];
+            req.session.username = username;
+            res.redirect('/');
         }
     });
 });
 
-// File upload endpoint
-app.post('/upload', upload.single('file'), (req, res) => {
-    res.send({ message: 'File uploaded successfully!' });
+// WebSocket for terminal handling
+wss.on('connection', (ws, req) => {
+    const username = req.session && req.session.username;
+    if (!username) {
+        ws.close();
+        return;
+    }
+
+    const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+    const ptyProcess = pty.spawn(shell, [], {
+        name: 'xterm-color',
+        cols: 80,
+        rows: 30,
+        cwd: process.env.HOME,
+        env: process.env,
+    });
+
+    ptyProcess.on('data', (data) => ws.send(data));
+
+    ws.on('message', (msg) => ptyProcess.write(msg));
+    ws.on('close', () => ptyProcess.kill());
 });
 
-// File download endpoint
+// File Upload Route
+app.post('/upload', (req, res) => {
+    if (!req.files || Object.keys(req.files).length === 0) {
+        return res.status(400).send('No files were uploaded.');
+    }
+
+    const file = req.files.file;
+    const uploadPath = path.join(__dirname, 'uploads', file.name);
+
+    file.mv(uploadPath, (err) => {
+        if (err) return res.status(500).send(err);
+        res.send('File uploaded!');
+    });
+});
+
+// File Download Route
 app.get('/download/:filename', (req, res) => {
-    const file = path.join(__dirname, 'uploads', req.params.filename);
-    res.download(file);
+    const filePath = path.join(__dirname, 'uploads', req.params.filename);
+    res.download(filePath);
 });
 
+// Start server
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
