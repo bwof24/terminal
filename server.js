@@ -25,12 +25,13 @@ let authenticatedUsers = {}; // Track authenticated users
 wss.on('connection', (ws) => {
     let authenticated = false;
     let username = '';
-    
+
     ws.send('Authentication required!\nEnter username: ');
 
     ws.on('message', (msg) => {
+        const message = msg.toString(); // Convert message to string
         if (!authenticated) {
-            const input = msg.trim();
+            const input = message.trim(); // Use trim safely now
             if (!username) {
                 // First step: asking for username
                 username = input;
@@ -62,7 +63,7 @@ wss.on('connection', (ws) => {
             }
         } else {
             // Handle terminal commands after authentication
-            authenticatedUsers[ws].write(msg);
+            authenticatedUsers[ws].write(message);
         }
     });
 
